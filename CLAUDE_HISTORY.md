@@ -14,3 +14,7 @@ Una entrada por sesión, la más reciente arriba. Formato:
 ## 2026-11-23 — Render
 - Se añadió `render.yaml` (sitio estático de arranque en `public/`) y `docs/deploy/render.md`.
 - Blueprint conectado por el usuario el 2026-11-23. Live en https://ultimo-modulo.onrender.com (HTTP 200 verificado).
+
+## 2026-11-23 — Vercel
+- Se añadió `vercel.json` y `docs/deploy/vercel.md`. Reparto: Vercel = frontend, Render = backend (de momento también sirve el estático).
+- Pendiente: el usuario importa el repo en Vercel y pasa la URL.
