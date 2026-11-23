@@ -13,4 +13,4 @@ Una entrada por sesión, la más reciente arriba. Formato:
 
 ## 2026-11-23 — Render
 - Se añadió `render.yaml` (sitio estático de arranque en `public/`) y `docs/deploy/render.md`.
-- Blueprint conectado por el usuario el 2026-11-23. Pendiente: confirmar la URL pública.
+- Blueprint conectado por el usuario el 2026-11-23. Live en https://ultimo-modulo.onrender.com (HTTP 200 verificado).

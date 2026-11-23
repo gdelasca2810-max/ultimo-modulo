@@ -4,7 +4,7 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 
 ## Descripción
 - Repo: https://github.com/gdelasca2810-max/ultimo-modulo (privado, rama `main`).
-- Deploy: Render vía Blueprint `render.yaml` (estático, `public/`, autodeploy). Detalle en `docs/deploy/render.md`.
+- Deploy: Render vía Blueprint `render.yaml` (estático, `public/`, autodeploy). URL: https://ultimo-modulo.onrender.com. Detalle en `docs/deploy/render.md`.
 <!-- Rellenar: qué es el proyecto, stack, comandos esenciales. -->
 
 ## Mapa de documentos (leer bajo demanda con `@`)
