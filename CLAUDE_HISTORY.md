@@ -10,3 +10,7 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Se inicializó git y se creó el repo privado gdelasca2810-max/ultimo-modulo; commit inicial con la estructura (CLAUDE.md, docs/, .claude/).
 - Pendiente: nada.
 - Corrección: el repo se movió a la cuenta gdelasca2810-max (el usuario no quería Nutriberry; borra él el repo viejo).
+
+## 2026-11-23 — Render
+- Se añadió `render.yaml` (sitio estático de arranque en `public/`) y `docs/deploy/render.md`.
+- Pendiente: el usuario conecta el Blueprint en el dashboard de Render.

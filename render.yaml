@@ -1,0 +1,14 @@
+# Blueprint de Render: https://render.com/docs/blueprint-spec
+# Se despliega automáticamente con cada push a main.
+services:
+  - type: web
+    name: ultimo-modulo
+    runtime: static
+    branch: main
+    buildCommand: echo "Sin build por ahora"
+    staticPublishPath: ./public
+    autoDeploy: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY

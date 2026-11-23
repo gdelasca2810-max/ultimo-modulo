@@ -4,6 +4,7 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 
 ## Descripción
 - Repo: https://github.com/gdelasca2810-max/ultimo-modulo (privado, rama `main`).
+- Deploy: Render vía Blueprint `render.yaml` (estático, `public/`, autodeploy). Detalle en `docs/deploy/render.md`.
 <!-- Rellenar: qué es el proyecto, stack, comandos esenciales. -->
 
 ## Mapa de documentos (leer bajo demanda con `@`)
@@ -11,6 +12,7 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 |---|---|
 | Reglas de memoria y documentación | `docs/claude/memoria.md` |
 | Uso de modelos y agentes | `docs/claude/modelos.md` |
+| Despliegue en Render | `docs/deploy/render.md` |
 | Historia de sesiones | `CLAUDE_HISTORY.md` |
 
 ## Memoria y documentación (resumen; detalle en `docs/claude/memoria.md`)
