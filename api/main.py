@@ -224,4 +224,47 @@ async def telegram_webhook(update: dict):
         resumen_zonas.append(
             f"- {z.get('zona')}: multiplicador={z.get('multiplicador_riesgo', 'N/A')}x, "
             f"prob_7d={z.get('probabilidad_m65_7d', 'N/A')}, "
-            f"sismos
+            f"sismos_200km_96h={z.get('loc200_n96_con', 0)}"
+        )
+
+    if gemini_key:
+        prompt = (
+            "Eres el asistente de monitoreo sísmico del sistema USGS + Machine Learning. "
+            "Responde de forma clara, breve y en español usando únicamente estos datos actualizados:\n\n"
+            + "\n".join(resumen_zonas)
+            + f"\n\nPregunta del usuario: {texto_usuario}"
+        )
+        respuesta = ""
+        ultimo_error = ""
+        for modelo in (
+            "gemini-flash-latest",
+            "gemini-3.1-flash-lite-preview",
+            "gemini-3-flash-preview",
+        ):
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={gemini_key}",
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=20,
+            )
+            if r.ok:
+                respuesta = (
+                    r.json()
+                    .get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text", "No pude generar respuesta.")
+                )
+                break
+            ultimo_error = f"{modelo} ({r.status_code}): {r.text[:180]}"
+
+        if not respuesta:
+            respuesta = f"Error al consultar Gemini -> {ultimo_error}"
+    else:
+        respuesta = "Falta configurar GEMINI_API_KEY en Render para responder preguntas abiertas."
+
+    requests.post(
+        f"https://api.telegram.org/bot{tg_token}/sendMessage",
+        json={"chat_id": chat_id, "text": respuesta},
+        timeout=15,
+    )
+    return {"ok": True}
