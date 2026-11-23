@@ -1,6 +1,6 @@
 from pathlib import Path
 import joblib
-import pandas as pd
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -39,15 +39,16 @@ def predecir(datos: ConsultaRiesgo):
     tasa_base = artefacto["tasas_zona"][datos.zona]
     media_96h = artefacto["medias_96h"][datos.zona]
 
-    fila = pd.DataFrame([{
-        "loc200_n96_con": datos.loc200_n96_con,
-        "loc200_n96_sin45": datos.loc200_n96_sin45,
-        "loc500_n96_con": datos.loc500_n96_con,
-        "lat_n96_prof70_150": datos.lat_n96_prof70_150,
-        "media_96h_zona": media_96h,
-    }])
+    # Mismo orden exacto que FEATURES en api/train.py
+    X = np.array([[
+        datos.loc200_n96_con,
+        datos.loc200_n96_sin45,
+        datos.loc500_n96_con,
+        datos.lat_n96_prof70_150,
+        media_96h,
+    ]])
 
-    prob_7d = float(artefacto["modelo"].predict_proba(fila)[0][1])
+    prob_7d = float(artefacto["modelo"].predict_proba(X)[0][1])
     multiplicador = round(prob_7d / tasa_base, 2) if tasa_base > 0 else 1.0
 
     return {
