@@ -202,3 +202,58 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         "alertas_evaluadas": len(alertas),
         "alerta_enviada_telegram": alerta_enviada,
     }
+@app.post("/telegram-webhook")
+async def telegram_webhook(update: dict):
+    message = update.get("message") or {}
+    chat_id = str((message.get("chat") or {}).get("id", ""))
+    texto_usuario = (message.get("text") or "").strip()
+
+    if not texto_usuario or not chat_id:
+        return {"ok": True}
+
+    tg_token = os.environ["TELEGRAM_BOT_TOKEN"]
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+    # Consultar el estado actual de las zonas en Supabase
+    sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+    zonas_db = sb.table("zonas_sismicas").select("*").execute().data or []
+
+    resumen_zonas = []
+    for z in zonas_db:
+        resumen_zonas.append(
+            f"- {z.get('zona')}: multiplicador={z.get('multiplicador_riesgo', 'N/A')}x, "
+            f"prob_7d={z.get('probabilidad_m65_7d', 'N/A')}, "
+            f"sismos_200km_96h={z.get('loc200_n96_con', 0)}"
+        )
+
+    if gemini_key:
+        prompt = (
+            "Eres el asistente de monitoreo sísmico del sistema USGS + Machine Learning. "
+            "Responde de forma clara, breve y en español usando únicamente estos datos actualizados:\n\n"
+            + "\n".join(resumen_zonas)
+            + f"\n\nPregunta del usuario: {texto_usuario}"
+        )
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}",
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=20,
+        )
+        if r.ok:
+            respuesta = (
+                r.json()
+                .get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "No pude generar respuesta.")
+            )
+        else:
+            respuesta = "Error al consultar Gemini. Zonas registradas: " + str(len(zonas_db))
+    else:
+        respuesta = "Falta configurar GEMINI_API_KEY en Render para responder preguntas abiertas."
+
+    requests.post(
+        f"https://api.telegram.org/bot{tg_token}/sendMessage",
+        json={"chat_id": chat_id, "text": respuesta},
+        timeout=15,
+    )
+    return {"ok": True}
