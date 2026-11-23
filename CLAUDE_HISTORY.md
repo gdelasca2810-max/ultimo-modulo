@@ -13,4 +13,4 @@ Una entrada por sesión, la más reciente arriba. Formato:
 
 ## 2026-11-23 — Render
 - Se añadió `render.yaml` (sitio estático de arranque en `public/`) y `docs/deploy/render.md`.
-- Pendiente: el usuario conecta el Blueprint en el dashboard de Render.
+- Blueprint conectado por el usuario el 2026-11-23. Pendiente: confirmar la URL pública.
