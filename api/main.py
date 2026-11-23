@@ -126,6 +126,7 @@ def ejecutar_vigilancia(key: str = Query(default="")):
     columnas_existentes = set(zonas_db[0].keys()) if zonas_db else set()
 
     resultados_zona = {}
+    detalles_zona = {}
     for zona in lista_zonas:
         if zona not in ZONAS_COORDS:
             continue
@@ -157,6 +158,12 @@ def ejecutar_vigilancia(key: str = Query(default="")):
             lat_n96_prof70_150=prof70_150,
         ))
         resultados_zona[zona] = pred
+        detalles_zona[zona] = {
+            "loc200_con": loc200_con,
+            "loc200_sin45": loc200_sin45,
+            "loc500_con": loc500_con,
+            "prof70_150": prof70_150,
+        }
 
         candidatos = {
             "loc200_n96_con": loc200_con,
@@ -176,22 +183,28 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         zona = a["zona"]
         umbral = float(a.get("umbral_multiplicador", 2.0))
         info = resultados_zona.get(zona)
+        det = detalles_zona.get(zona, {})
         if info and info["multiplicador_riesgo"] >= umbral:
             notificaciones.append(
-                f"• *{zona}*: Multiplicador *{info['multiplicador_riesgo']}x* "
-                f"(umbral ≥ {umbral}x) | Prob. M6.5+ 7d: *{info['probabilidad_m65_7d']*100:.2f}%*"
+                f"📍 <b>Zona:</b> {zona}\n"
+                f"⚠️ <b>Probabilidad M6.5+ (7 días):</b> {info['probabilidad_m65_7d']*100:.2f}% "
+                f"(Base normal: {info['tasa_historica_7d']*100:.2f}%)\n"
+                f"📈 <b>Riesgo relativo:</b> <b>{info['multiplicador_riesgo']}x</b> (umbral configurado: {umbral}x)\n"
+                f"📊 <b>Base del cálculo (96h):</b> {det.get('loc200_con', 0)} sismos &lt;200km "
+                f"({det.get('loc200_sin45', 0)} &lt;M4.5), {det.get('loc500_con', 0)} &lt;500km, "
+                f"{det.get('prof70_150', 0)} en prof. 70–150km"
             )
 
     alerta_enviada = False
     if notificaciones:
         mensaje = (
-            "🚨 *ALERTA SÍSMICA RELATIVA (USGS + ML)*\n\n"
-            + "\n".join(notificaciones)
-            + "\n\nPanel: https://ultimo-modulo.vercel.app"
+            "🚨 <b>ALERTA SÍSMICA AUTOMÁTICA (USGS + ML)</b>\n\n"
+            + "\n\n".join(notificaciones)
+            + "\n\n🌐 Panel web: https://ultimo-modulo.vercel.app"
         )
         requests.post(
             f"https://api.telegram.org/bot{tg_token}/sendMessage",
-            json={"chat_id": tg_chat_id, "text": mensaje, "parse_mode": "Markdown"},
+            json={"chat_id": tg_chat_id, "text": mensaje, "parse_mode": "HTML"},
             timeout=15,
         ).raise_for_status()
         alerta_enviada = True
@@ -221,16 +234,36 @@ async def telegram_webhook(update: dict):
 
     resumen_zonas = []
     for z in zonas_db:
+        nombre = z.get("zona")
+        tasa_base = artefacto["tasas_zona"].get(nombre, 0.0)
+        mult = z.get("multiplicador_riesgo", "N/A")
+        prob = z.get("probabilidad_m65_7d")
+        prob_pct = f"{float(prob)*100:.2f}%" if prob is not None else "N/A"
+        base_pct = f"{tasa_base*100:.2f}%"
         resumen_zonas.append(
-            f"- {z.get('zona')}: multiplicador={z.get('multiplicador_riesgo', 'N/A')}x, "
-            f"prob_7d={z.get('probabilidad_m65_7d', 'N/A')}, "
-            f"sismos_200km_96h={z.get('loc200_n96_con', 0)}"
+            f"- {nombre}: prob_m65_7d={prob_pct} (tasa_historica={base_pct}), "
+            f"multiplicador={mult}x, sismos_200km_96h={z.get('loc200_n96_con', 0)}, "
+            f"sismos_menores_4.5_200km={z.get('loc200_n96_sin45', 0)}, "
+            f"sismos_500km_96h={z.get('loc500_n96_con', 0)}, "
+            f"sismos_prof_70_150km={z.get('lat_n96_prof70_150', 0)}"
         )
 
     if gemini_key:
         prompt = (
-            "Eres el asistente de monitoreo sísmico del sistema USGS + Machine Learning. "
-            "Responde de forma clara, breve y en español usando únicamente estos datos actualizados:\n\n"
+            "Eres el asistente de monitoreo sísmico USGS + Machine Learning. "
+            "Responde en español usando EXCLUSIVAMENTE etiquetas HTML básicas de Telegram "
+            "(<b>negrita</b> e <i>cursiva</i>). PROHIBIDO usar asteriscos (*) o Markdown.\n\n"
+            "Estructura OBLIGATORIA línea por línea (deja una línea en blanco entre cada bloque):\n"
+            "🔎 <b>Consulta:</b> [Resumen breve de lo que preguntó el usuario]\n"
+            "📍 <b>Lugar / Zona:</b> [Nombre exacto de la zona o zonas]\n"
+            "⚠️ <b>Probabilidad de sismo mayor (M6.5+ en 7 días):</b> [Porcentaje] (Frente a una base histórica normal de [tasa_historica] — Riesgo relativo: <b>[multiplicador]x</b>)\n"
+            "📊 <b>En base a qué se calcula (últimas 96h):</b>\n"
+            "• Sismos cercanos (&lt;200 km): [valor] ([valor menores a M4.5] menores a M4.5)\n"
+            "• Sismos regionales (&lt;500 km): [valor]\n"
+            "• Sismos intermedios (70–150 km prof.): [valor]\n"
+            "💡 <b>Conclusión:</b> [1 frase directa respondiendo a la duda del usuario]\n\n"
+            "Si el usuario pregunta por varias zonas o un ranking, muestra hasta 3 zonas con ese mismo formato claro línea por línea.\n\n"
+            "Datos actuales en tiempo real:\n"
             + "\n".join(resumen_zonas)
             + f"\n\nPregunta del usuario: {texto_usuario}"
         )
@@ -260,11 +293,11 @@ async def telegram_webhook(update: dict):
         if not respuesta:
             respuesta = f"Error al consultar Gemini -> {ultimo_error}"
     else:
-        respuesta = "Falta configurar GEMINI_API_KEY en Render para responder preguntas abiertas."
+        respuesta = "Falta configurar GEMINI_API_KEY en Render."
 
     requests.post(
         f"https://api.telegram.org/bot{tg_token}/sendMessage",
-        json={"chat_id": chat_id, "text": respuesta},
+        json={"chat_id": chat_id, "text": respuesta, "parse_mode": "HTML"},
         timeout=15,
     )
     return {"ok": True}
