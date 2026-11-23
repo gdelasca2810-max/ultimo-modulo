@@ -1,0 +1,24 @@
+name: Vigilancia Sismica USGS + Telegram
+
+on:
+  schedule:
+    - cron: "15 * * * *" # Cada hora en el minuto 15
+  workflow_dispatch:     # Permite lanzarlo manualmente desde GitHub
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r agente/requirements.txt
+      - name: Ejecutar agente de vigilancia
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RENDER_API_URL: https://ultimo-modulo.onrender.com
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python agente/vigilante.py --test-telegram
