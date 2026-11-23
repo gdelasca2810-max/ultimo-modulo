@@ -3,7 +3,7 @@
 Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigentes**, cortos. El detalle vive en `docs/` y la crónica en `CLAUDE_HISTORY.md`.
 
 ## Descripción
-- Repo: https://github.com/Nutriberry/ultimo-modulo (privado, rama `main`).
+- Repo: https://github.com/gdelasca2810-max/ultimo-modulo (privado, rama `main`).
 <!-- Rellenar: qué es el proyecto, stack, comandos esenciales. -->
 
 ## Mapa de documentos (leer bajo demanda con `@`)
