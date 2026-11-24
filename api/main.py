@@ -58,22 +58,43 @@ def calcular_prediccion(datos: ConsultaRiesgo):
     if datos.zona not in artefacto["tasas_zona"]:
         raise HTTPException(status_code=404, detail=f"Zona no reconocida: {datos.zona}")
 
-    tasa_base = artefacto["tasas_zona"][datos.zona]
-    media_96h = artefacto["medias_96h"][datos.zona]
+    tasa_base = float(artefacto["tasas_zona"][datos.zona])
+    media_96h = float(artefacto["medias_96h"][datos.zona])
 
-    X = np.array([[
-        datos.loc200_n96_con,
-        datos.loc200_n96_sin45,
-        datos.loc500_n96_con,
-        datos.lat_n96_prof70_150,
-        media_96h,
-    ]])
+    if artefacto.get("version") == "v2_features_11a":
+        p90_local = float(artefacto.get("p90_zona", {}).get(datos.zona, media_96h))
+        loc200_m45plus = max(0, datos.loc200_n96_con - datos.loc200_n96_sin45)
+        ratio_actividad = datos.loc200_n96_con / (media_96h + 0.25)
+        exceso_p90 = datos.loc200_n96_con - p90_local
+        concentracion = datos.loc200_n96_con / (datos.loc500_n96_con + 1.0)
+
+        X = np.array([[
+            datos.loc200_n96_con,
+            datos.loc200_n96_sin45,
+            loc200_m45plus,
+            datos.loc500_n96_con,
+            datos.lat_n96_prof70_150,
+            media_96h,
+            p90_local,
+            ratio_actividad,
+            exceso_p90,
+            concentracion,
+        ]], dtype=float)
+    else:
+        X = np.array([[
+            datos.loc200_n96_con,
+            datos.loc200_n96_sin45,
+            datos.loc500_n96_con,
+            datos.lat_n96_prof70_150,
+            media_96h,
+        ]], dtype=float)
 
     prob_7d = float(artefacto["modelo"].predict_proba(X)[0][1])
     multiplicador = round(prob_7d / tasa_base, 2) if tasa_base > 0 else 1.0
 
     return {
         "zona": datos.zona,
+        "version_modelo": artefacto.get("version", "v1"),
         "probabilidad_m65_7d": round(prob_7d, 5),
         "tasa_historica_7d": round(tasa_base, 5),
         "multiplicador_riesgo": multiplicador,
@@ -104,7 +125,11 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "metricas_test": artefacto["metricas_test"]}
+    return {
+        "status": "ok",
+        "version_modelo": artefacto.get("version", "v1"),
+        "metricas_test": artefacto["metricas_test"],
+    }
 
 
 @app.post("/predict")
@@ -173,6 +198,7 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         detalles_zona[zona] = {
             "loc200_con": loc200_con,
             "loc200_sin45": loc200_sin45,
+            "loc200_m45plus": max(0, loc200_con - loc200_sin45),
             "loc500_con": loc500_con,
             "prof70_150": prof70_150,
         }
@@ -206,8 +232,8 @@ def ejecutar_vigilancia(key: str = Query(default="")):
                 f"⚠️ <b>Probabilidad sismo fuerte (M6.5+ en 7 días):</b> {info['probabilidad_m65_7d']*100:.2f}% "
                 f"(habitual: {info['tasa_historica_7d']*100:.2f}%, ~1 cada {semanas_eq} semanas)\n"
                 f"📈 <b>Nivel respecto a lo normal:</b> <b>{info['multiplicador_riesgo']}x</b> (tu alerta: {umbral}x)\n"
-                f"📊 <b>Actividad detectada (96h):</b> {det.get('loc200_con', 0)} sismos cercanos (&lt;200km), "
-                f"{det.get('loc500_con', 0)} regionales (&lt;500km) y {det.get('prof70_150', 0)} profundos (70–150km)"
+                f"📊 <b>Actividad detectada (96h):</b> {det.get('loc200_con', 0)} sismos cercanos "
+                f"({det.get('loc200_m45plus', 0)} de M4.5+), {det.get('loc500_con', 0)} regionales (&lt;500km)"
             )
 
     alerta_enviada = False
@@ -226,6 +252,7 @@ def ejecutar_vigilancia(key: str = Query(default="")):
 
     return {
         "eventos_usgs_96h": len(eventos),
+        "version_modelo": artefacto.get("version", "v1"),
         "zonas_actualizadas": len(resultados_zona),
         "alertas_evaluadas": len(alertas),
         "alerta_enviada_telegram": alerta_enviada,
@@ -263,11 +290,10 @@ async def telegram_webhook(update: dict):
     tg_token = os.environ["TELEGRAM_BOT_TOKEN"]
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-    # Paso 1: Feedback inmediato al usuario mientras se leen datos
     msg_id = enviar_progreso_tg(
         tg_token,
         chat_id,
-        "⏳ 1/2 Leyendo los últimos registros sísmicos y ejecutando el modelo predictivo...",
+        "⏳ 1/2 Consultando la red sísmica y calculando probabilidades...",
     )
 
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
@@ -280,6 +306,7 @@ async def telegram_webhook(update: dict):
             continue
         loc200_con = int(z.get("loc200_n96_con") or 0)
         loc200_sin45 = int(z.get("loc200_n96_sin45") or 0)
+        loc200_m45plus = max(0, loc200_con - loc200_sin45)
         loc500_con = int(z.get("loc500_n96_con") or 0)
         prof70_150 = int(z.get("lat_n96_prof70_150") or 0)
 
@@ -298,15 +325,14 @@ async def telegram_webhook(update: dict):
         resumen_zonas.append(
             f"- {nombre}: estado={estado_txt}, prob_7d={prob_pct}, "
             f"habitual_7d={base_pct} (equivale a ~1 sismo fuerte cada {semanas_eq} semanas en condiciones normales), "
-            f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} (de ellos {loc200_sin45} leves <M4.5), "
+            f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} moderados M4.5+ y {loc200_sin45} leves <M4.5), "
             f"sismos_regionales_500km={loc500_con}, sismos_profundos_70_150km={prof70_150}"
         )
 
-    # Paso 2: Actualizar estado mientras redacta la explicación
     msg_id = enviar_progreso_tg(
         tg_token,
         chat_id,
-        "🧠 2/2 Predicción calculada. Preparando explicación clara...",
+        "🧠 2/2 Predicción lista. Redactando explicación clara...",
         msg_id=msg_id,
     )
 
@@ -314,14 +340,14 @@ async def telegram_webhook(update: dict):
         prompt = (
             "Eres un asistente que explica el riesgo sísmico a ciudadanos sin conocimientos técnicos. "
             "Responde en español claro usando EXCLUSIVAMENTE etiquetas HTML de Telegram (<b>negrita</b> e <i>cursiva</i>). "
-            "PROHIBIDO usar asteriscos (*) o Markdown.\n\n"
+            "PROHIBIDO usar asteriscos (*) o Markdown. Si escribes símbolos menor que, usa &lt;.\n\n"
             "Usa EXACTAMENTE esta estructura línea por línea (dejando una línea en blanco entre bloques):\n"
             "🔎 <b>Tu consulta:</b> [Resumen breve de lo que preguntó el usuario]\n"
             "📍 <b>Zona analizada:</b> [Nombre exacto de la zona]\n"
             "🚦 <b>Nivel de actividad actual:</b> [Copia el estado: 🟢 NORMAL, 🟡 MODERADO o 🔴 ELEVADO]\n"
             "⚠️ <b>Probabilidad de terremoto fuerte (M6.5+ esta semana):</b> <b>[prob_7d]</b> — En esta zona lo habitual en una semana tranquila es [habitual_7d] ([equivalencia en semanas]), por lo que hoy está a <b>[multiplicador]x</b> de su nivel normal.\n"
             "📊 <b>¿En qué se basa este resultado? (últimas 96 horas):</b>\n"
-            "• Sismos cercanos (&lt;200 km): [sismos_cercanos_200km] ([sismos leves <M4.5] leves)\n"
+            "• Sismos cercanos (&lt;200 km): [sismos_cercanos_200km] ([moderados M4.5+] moderados M4.5+ y [leves] leves)\n"
             "• Sismos en la región (&lt;500 km): [sismos_regionales_500km]\n"
             "• Sismos en zona profunda (70–150 km): [sismos_profundos_70_150km]\n"
             "💡 <b>En palabras simples:</b> [1 o 2 frases muy claras explicando qué significa esto hoy para una persona común]\n\n"
@@ -358,7 +384,6 @@ async def telegram_webhook(update: dict):
     else:
         respuesta = "Falta configurar GEMINI_API_KEY en Render."
 
-    # Reemplazar el mensaje de progreso con la respuesta final formateada
     if msg_id:
         r_final = requests.post(
             f"https://api.telegram.org/bot{tg_token}/editMessageText",
@@ -372,8 +397,8 @@ async def telegram_webhook(update: dict):
         )
         if not r_final.ok:
             requests.post(
-                f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                json={"chat_id": chat_id, "text": respuesta, "parse_mode": "HTML"},
+                f"https://api.telegram.org/bot{tg_token}/editMessageText",
+                json={"chat_id": chat_id, "message_id": msg_id, "text": respuesta},
                 timeout=15,
             )
     else:
