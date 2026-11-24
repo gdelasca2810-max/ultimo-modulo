@@ -505,11 +505,15 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             "gemini-3.1-flash-lite-preview",
             "gemini-3-flash-preview",
         ):
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={gemini_key}",
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=20,
-            )
+            try:
+                r = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={gemini_key}",
+                    json={"contents": [{"parts": [{"text": prompt}]}]},
+                    timeout=40,
+                )
+            except requests.RequestException as e:
+                ultimo_error = f"{modelo}: {type(e).__name__}"
+                continue
             if r.ok:
                 respuesta = (
                     r.json()
@@ -522,7 +526,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             ultimo_error = f"{modelo} ({r.status_code}): {r.text[:180]}"
 
         if not respuesta:
-            respuesta = f"Error al consultar Gemini -> {ultimo_error}"
+            respuesta = "⚠️ El asistente de IA tardó demasiado en responder. Inténtalo de nuevo en un minuto. (" + ultimo_error + ")"
     else:
         respuesta = "Falta configurar GEMINI_API_KEY en Render."
 
