@@ -602,7 +602,8 @@ def generar_embedding(texto: str, tarea: str) -> list:
             },
             timeout=30,
         )
-        r.raise_for_status()
+        if not r.ok:
+            raise RuntimeError(f"embeddings openai {r.status_code}: {r.text[:200]}")
         return r.json()["data"][0]["embedding"]
     r = requests.post(
         EMBED_URL,
@@ -614,7 +615,8 @@ def generar_embedding(texto: str, tarea: str) -> list:
         },
         timeout=30,
     )
-    r.raise_for_status()
+    if not r.ok:
+        raise RuntimeError(f"embeddings gemini {r.status_code}: {r.text[:200]}")
     return r.json()["embedding"]["values"]
 
 
@@ -633,6 +635,14 @@ def ingestar_conocimiento(key: str = Query(default="")):
     cron_secret = os.getenv("CRON_SECRET", "")
     if cron_secret and key != cron_secret:
         raise HTTPException(status_code=401, detail="Clave inválida")
+    try:
+        return _ingestar()
+    except Exception as e:
+        print(f"[rag] {type(e).__name__}: {e}", flush=True)
+        return {"error": f"{type(e).__name__}: {e}"[:400]}
+
+
+def _ingestar():
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
     total = 0
     for md in sorted(RAG_DIR.glob("*.md")):
