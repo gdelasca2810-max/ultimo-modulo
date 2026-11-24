@@ -500,6 +500,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         )
         respuesta = ""
         ultimo_error = ""
+        errores = []
         modelos = [m.strip() for m in os.getenv("GEMINI_MODELS", "").split(",") if m.strip()] or [
             "gemini-flash-latest",
             "gemini-3.1-flash-lite-preview",
@@ -515,6 +516,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             except requests.RequestException as e:
                 ultimo_error = f"{modelo}: {type(e).__name__}"
                 print(f"[gemini] {ultimo_error}", flush=True)
+                errores.append(f"{modelo} ({type(e).__name__})")
                 continue
             if r.ok:
                 respuesta = (
@@ -525,10 +527,12 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
                     .get("text", "No pude generar respuesta.")
                 )
                 break
-            ultimo_error = f"{modelo} ({r.status_code}): {r.text[:180]}"
+            ultimo_error = f"{modelo} ({r.status_code}): {r.text[:120]}"
+            print(f"[gemini] {ultimo_error}", flush=True)
+            errores.append(f"{modelo} ({r.status_code})")
 
         if not respuesta:
-            respuesta = "⚠️ El asistente de IA tardó demasiado en responder. Inténtalo de nuevo en un minuto. (" + ultimo_error + ")"
+            respuesta = "⚠️ El asistente de IA tardó demasiado en responder. Inténtalo de nuevo en un minuto. (Probé: " + ", ".join(errores) + ")"
     else:
         respuesta = "Falta configurar GEMINI_API_KEY en Render."
 
