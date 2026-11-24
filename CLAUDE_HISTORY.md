@@ -6,6 +6,9 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
+## 2026-11-24 — Web en lenguaje simple y docs del modelo
+- Web reescrita (riesgo hoy, top 3, pasos, tabla móvil), `db/zonas_riesgo_hoy.sql`, `/vigilar` guarda `actualizado_en`. Nuevo `docs/modelo_ml.md`; `docs/todo.md` completado.
+
 ## 2026-11-24 — Bot: OpenAI + Gemini, RAG verificado
 - Timeouts de Gemini tolerados; bot con OpenAI `gpt-6-luna` primero y Gemini de respaldo (`GEMINI_MODELS`). RAG indexado con embeddings de Gemini (16 fragmentos) y probado en Telegram. OpenAI sin crédito para embeddings.
 
