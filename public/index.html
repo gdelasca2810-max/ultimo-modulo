@@ -4,153 +4,70 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Monitor de Riesgo Sísmico — USGS + IA</title>
-<meta name="description" content="Qué zonas del mundo están más activas de lo habitual, con datos reales del USGS, un modelo de aprendizaje automático y avisos por Telegram.">
+<meta name="description" content="Qué zonas del mundo están más activas de lo habitual, con datos reales del USGS, un modelo de IA y avisos por Telegram en lenguaje claro.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
-  --bg: #f3f5f9;
-  --surface: #ffffff;
-  --surface-2: #f7f9fc;
-  --text: #0f172a;
-  --muted: #566176;
-  --border: #e1e6ee;
-  --accent: #2a78d6;
-  --accent-ink: #ffffff;
+  --bg: #f3f5f9; --surface: #ffffff; --surface-2: #f7f9fc; --text: #0f172a; --muted: #566176; --border: #e1e6ee;
+  --accent: #2a78d6; --accent-ink: #ffffff;
   --ok-bg: #dcf5e6; --ok-ink: #0b5a2b;
+  --mid-bg: #e3edff; --mid-ink: #1b4a9c;
   --warn-bg: #fdecc8; --warn-ink: #7a4a00;
+  --hot-bg: #fde0e0; --hot-ink: #8a1c1c;
   --bar: #2a78d6; --bar-bg: #e6ecf5;
   --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.06);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0a0f1c; --surface: #141c2d; --surface-2: #19233a; --text: #eef2f8; --muted: #9aa8bf;
-    --border: #25324a; --accent: #3987e5; --ok-bg: #12382a; --ok-ink: #86e3ac;
-    --warn-bg: #43310c; --warn-ink: #f5c767; --bar: #3987e5; --bar-bg: #22304a;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    --bg: #0a0f1c; --surface: #141c2d; --surface-2: #19233a; --text: #eef2f8; --muted: #9aa8bf; --border: #25324a; --accent: #3987e5;
+    --ok-bg: #12382a; --ok-ink: #86e3ac; --mid-bg: #172c52; --mid-ink: #9cc3ff; --warn-bg: #43310c; --warn-ink: #f5c767; --hot-bg: #4a1818; --hot-ink: #ffaaaa;
+    --bar: #3987e5; --bar-bg: #22304a; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0a0f1c; --surface: #141c2d; --surface-2: #19233a; --text: #eef2f8; --muted: #9aa8bf;
-  --border: #25324a; --accent: #3987e5; --ok-bg: #12382a; --ok-ink: #86e3ac;
-  --warn-bg: #43310c; --warn-ink: #f5c767; --bar: #3987e5; --bar-bg: #22304a;
-  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  --bg: #0a0f1c; --surface: #141c2d; --surface-2: #19233a; --text: #eef2f8; --muted: #9aa8bf; --border: #25324a; --accent: #3987e5;
+  --ok-bg: #12382a; --ok-ink: #86e3ac; --mid-bg: #172c52; --mid-ink: #9cc3ff; --warn-bg: #43310c; --warn-ink: #f5c767; --hot-bg: #4a1818; --hot-ink: #ffaaaa;
+  --bar: #3987e5; --bar-bg: #22304a; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
-body {
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg); color: var(--text); line-height: 1.55; -webkit-font-smoothing: antialiased;
-}
+body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
 
-/* ---------- Hero oscuro ---------- */
-.hero { background: radial-gradient(1200px 500px at 80% -10%, #1b3a6b 0%, transparent 60%), #0a1224; color: #eaf0fb; padding: 18px 0 110px; }
+/* ---------- Hero ---------- */
+.hero { position: relative; overflow: hidden; background: radial-gradient(1200px 500px at 80% -10%, #1b3a6b 0%, transparent 60%), #0a1224; color: #eaf0fb; padding: 18px 0 110px; }
+.hero::before, .hero::after { content: ""; position: absolute; border-radius: 50%; filter: blur(70px); pointer-events: none; animation: drift 16s ease-in-out infinite alternate; }
+.hero::before { width: 420px; height: 420px; background: #3b5bdb; left: -120px; top: -80px; opacity: .5; }
+.hero::after { width: 360px; height: 360px; background: #d6336c; right: -80px; bottom: 20px; opacity: .28; animation-duration: 20s; }
+@keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(60px,40px) scale(1.15); } }
+.hero .wrap { position: relative; z-index: 1; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; }
-.brand-dot { width: 12px; height: 12px; border-radius: 50%; background: #ff6b4a; box-shadow: 0 0 0 4px rgba(255,107,74,.25); animation: pulse 2.4s ease-out infinite; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,107,74,.5);} 100% { box-shadow: 0 0 0 14px rgba(255,107,74,0);} }
+.brand-dot { width: 12px; height: 12px; border-radius: 50%; background: #ff6b4a; animation: pulse 2.4s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,107,74,.55); } 100% { box-shadow: 0 0 0 14px rgba(255,107,74,0); } }
 .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .chip { font-size: .82rem; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #cdd8ec; }
-.icon-btn { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #eaf0fb; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: .82rem; }
-.hero-text { margin: 34px 0 6px; max-width: 760px; }
+.icon-btn { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #eaf0fb; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: .82rem; font-family: inherit; }
+.hero-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(300px,420px); gap: 36px; align-items: center; margin-top: 28px; }
 .hero h1 { font-size: clamp(1.8rem, 4.2vw, 2.9rem); line-height: 1.1; letter-spacing: -.025em; }
 .hero h1 em { font-style: normal; color: #ff8a6b; }
 .hero p.lead { margin-top: 12px; color: #b4c2dc; font-size: 1.04rem; max-width: 640px; }
+.live-chip { display: none; align-items: center; gap: 8px; margin-top: 14px; font-size: .84rem; color: #ffd9cf; background: rgba(255,107,74,.14); border: 1px solid rgba(255,107,74,.35); padding: 6px 12px; border-radius: 999px; }
+.live-chip i { width: 8px; height: 8px; border-radius: 50%; background: #ff6b4a; animation: pulse 2s ease-out infinite; }
 .cta-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-.btn { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: .92rem; padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); text-decoration: none; }
-.btn:hover { filter: brightness(1.08); }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: .92rem; padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); text-decoration: none; transition: transform .15s ease, filter .15s ease, box-shadow .15s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(42,120,214,.35); }
+.btn:active { transform: scale(.98); }
 .btn.ghost { background: rgba(255,255,255,.1); color: #eaf0fb; border: 1px solid rgba(255,255,255,.18); }
 .btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
 .btn.sm { padding: 6px 11px; font-size: .82rem; border-radius: 8px; }
 
-/* ---------- Mapa ---------- */
-.map-card { margin-top: -86px; background: #0d1830; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; overflow: hidden; box-shadow: 0 20px 50px rgba(2,6,16,.35); position: relative; }
-#map { height: min(520px, 62vh); min-height: 340px; background: #0d1830; }
-.map-legend { position: absolute; left: 12px; bottom: 12px; z-index: 500; background: rgba(10,18,36,.86); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.12); color: #d6e0f2; border-radius: 12px; padding: 10px 12px; font-size: .78rem; display: grid; gap: 5px; max-width: 250px; }
-.lg { display: flex; align-items: center; gap: 8px; }
-.lg i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
-.map-note { position: absolute; right: 12px; top: 12px; z-index: 500; font-size: .76rem; color: #cdd8ec; background: rgba(10,18,36,.78); padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); }
-
-/* ---------- KPIs ---------- */
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 18px 0 8px; }
-.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
-.kpi-label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
-.kpi-value { font-size: 2.1rem; font-weight: 750; letter-spacing: -.03em; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.kpi-sub { font-size: .8rem; color: var(--muted); margin-top: 2px; }
-
-/* ---------- Layout principal ---------- */
-.main-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; margin-top: 18px; align-items: start; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
-.card h2 { font-size: 1.12rem; letter-spacing: -.01em; }
-.card .hint { color: var(--muted); font-size: .86rem; margin-top: 2px; }
-.side { position: sticky; top: 14px; display: grid; gap: 16px; }
-.table-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0 10px; }
-input[type=text], input[type=email], input[type=password], input[type=number], select {
-  width: 100%; font: inherit; font-size: .92rem; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
-}
-input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.field { display: grid; gap: 5px; }
-.field label { font-size: .78rem; font-weight: 600; color: var(--muted); }
-.check { display: flex; align-items: center; gap: 8px; font-size: .86rem; color: var(--muted); cursor: pointer; }
-.check input { width: 16px; height: 16px; accent-color: var(--accent); }
-
-.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
-table { width: 100%; border-collapse: collapse; min-width: 640px; }
-th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-weight: 650; }
-td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: middle; }
-tr:last-child td { border-bottom: 0; }
-tbody tr { cursor: pointer; transition: background .12s; }
-tbody tr:hover { background: var(--surface-2); }
-.zone-name { font-weight: 650; }
-.sub-data { display: block; font-size: .76rem; color: var(--muted); margin-top: 1px; }
-.pbar { height: 6px; border-radius: 3px; background: var(--bar-bg); margin-top: 6px; overflow: hidden; width: 120px; }
-.pbar i { display: block; height: 100%; background: var(--bar); border-radius: 3px; }
-.pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; font-size: .78rem; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
-.pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
-.pill.warn { background: var(--warn-bg); color: var(--warn-ink); }
-
-/* ---------- Panel usuario ---------- */
-.stack { display: grid; gap: 12px; margin-top: 14px; }
-.alert-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: .86rem; }
-.msg { font-size: .84rem; color: var(--warn-ink); min-height: 1em; }
-.tg-box { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); font-size: .86rem; }
-
-/* ---------- Cómo funciona ---------- */
-.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
-.step { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
-.step b.n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .85rem; margin-bottom: 8px; }
-.step h3 { font-size: 1rem; margin-bottom: 4px; }
-.step p { color: var(--muted); font-size: .88rem; }
-details.card { margin-top: 18px; }
-details summary { cursor: pointer; font-weight: 650; }
-.glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
-.glossary h4 { font-size: .88rem; margin-bottom: 3px; }
-.glossary p { font-size: .84rem; color: var(--muted); }
-footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26px 16px 40px; }
-
-@media (max-width: 980px) {
-  .main-grid { grid-template-columns: 1fr; }
-  .side { position: static; }
-  .kpis { grid-template-columns: repeat(2, 1fr); }
-  .steps { grid-template-columns: 1fr; }
-}
-@media (max-width: 520px) {
-  .kpi-value { font-size: 1.7rem; }
-  .hero { padding-bottom: 96px; }
-}
-@media (prefers-reduced-motion: reduce) { .brand-dot { animation: none; } html { scroll-behavior: auto; } }
-/* ===== v3: layout, animaciones y componentes nuevos ===== */
-.hero { position: relative; overflow: hidden; }
-.hero::before, .hero::after { content: ""; position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5; pointer-events: none; animation: drift 16s ease-in-out infinite alternate; }
-.hero::before { width: 420px; height: 420px; background: #3b5bdb; left: -120px; top: -80px; }
-.hero::after { width: 360px; height: 360px; background: #d6336c; right: -80px; bottom: 20px; opacity: .28; animation-duration: 20s; }
-@keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(60px,40px) scale(1.15); } }
-.hero .wrap { position: relative; z-index: 1; }
-.hero-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(300px,420px); gap: 36px; align-items: center; margin-top: 28px; }
-.hero-grid .hero-text { margin: 0; }
 .account { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(14px); border-radius: 20px; padding: 22px; box-shadow: 0 20px 50px rgba(2,6,16,.35); color: #eaf0fb; }
 .account h2 { font-size: 1.15rem; letter-spacing: -.01em; }
 .account .hint { color: #b4c2dc; font-size: .86rem; margin-top: 2px; }
@@ -161,40 +78,114 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
 .account .btn.secondary { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.22); }
 .account.flash { animation: flash 1.1s ease; }
 @keyframes flash { 0%,100% { box-shadow: 0 20px 50px rgba(2,6,16,.35); } 40% { box-shadow: 0 0 0 4px #ffb020, 0 20px 50px rgba(2,6,16,.35); } }
+.perks { list-style: none; display: grid; gap: 4px; margin: 12px 0 2px; font-size: .86rem; color: #d3def2; }
 .me { display: flex; align-items: center; gap: 12px; }
-.avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 750; font-size: 1.1rem; background: linear-gradient(135deg,#ff6b4a,#d6336c); color: #fff; flex: none; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 1.1rem; background: linear-gradient(135deg,#ff6b4a,#d6336c); color: #fff; flex: none; }
 .me b { display: block; font-size: .95rem; word-break: break-all; }
 .me small { color: #9fb3d8; }
+.tg-box { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); font-size: .86rem; }
 .account .tg-box { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16); color: #eaf0fb; margin-top: 14px; }
 .account .tg-box a { color: #8ec5ff; font-weight: 600; }
 
-.btn { transition: transform .15s ease, filter .15s ease, box-shadow .15s ease; }
-.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(42,120,214,.35); }
-.btn:active { transform: translateY(0) scale(.98); }
+/* ---------- Mapa ---------- */
+.map-card { margin-top: -86px; background: #0d1830; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; overflow: hidden; box-shadow: 0 20px 50px rgba(2,6,16,.35); position: relative; }
+#map { height: min(520px, 62vh); min-height: 340px; background: #0d1830; }
+.map-legend { position: absolute; left: 12px; bottom: 12px; z-index: 500; background: rgba(10,18,36,.86); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.12); color: #d6e0f2; border-radius: 12px; padding: 10px 12px; font-size: .78rem; display: grid; gap: 5px; max-width: 260px; }
+.lg { display: flex; align-items: center; gap: 8px; }
+.lg i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+.map-note { position: absolute; right: 12px; top: 12px; z-index: 500; font-size: .76rem; color: #cdd8ec; background: rgba(10,18,36,.78); padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); }
+.zm { display: block; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; }
+.zm.ok { background: #2fd07b; }
+.zm.act { background: #ffb020; animation: ring 2s ease-out infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(255,176,32,.65); } 100% { box-shadow: 0 0 0 16px rgba(255,176,32,0); } }
 
-/* Alertas: bloque protagonista */
-.alerts-hero { position: relative; overflow: hidden; margin-top: 18px; border-radius: 22px; padding: 26px; color: #fff;
+/* ---------- KPIs y secciones ---------- */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 18px 0 8px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); transition: transform .2s ease; }
+.kpi:hover { transform: translateY(-3px); }
+.kpi-label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.kpi-value { font-size: 2.1rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi-sub { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+.sec-title { font-size: 1.25rem; letter-spacing: -.02em; margin: 26px 0 4px; }
+.sec-sub { color: var(--muted); font-size: .9rem; margin-bottom: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
+.card h2 { font-size: 1.12rem; letter-spacing: -.01em; }
+.hint { color: var(--muted); font-size: .86rem; margin-top: 2px; }
+
+/* Top 3 */
+.top3-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); position: relative; overflow: hidden; cursor: pointer; transition: transform .2s ease, box-shadow .2s ease; }
+.tcard:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(15,23,42,.14); }
+.tcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--lvl, var(--accent)); }
+.tcard.l-hot { --lvl: #e34948; } .tcard.l-warn { --lvl: #eda100; } .tcard.l-mid { --lvl: #2a78d6; } .tcard.l-ok { --lvl: #1baf7a; }
+.t-rank { font-size: .78rem; color: var(--muted); font-weight: 700; letter-spacing: .06em; }
+.t-name { font-size: 1.12rem; font-weight: 750; margin-top: 2px; }
+.t-big { font-size: 2.3rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.t-big small { font-size: .9rem; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.t-line { font-size: .84rem; color: var(--muted); margin-top: 6px; }
+.t-line b { color: var(--text); }
+
+/* Pills */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; font-size: .78rem; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+.pill.mid { background: var(--mid-bg); color: var(--mid-ink); }
+.pill.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.pill.hot { background: var(--hot-bg); color: var(--hot-ink); }
+.pill.wait { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+
+/* ---------- Alertas (protagonista) ---------- */
+.alerts-hero { position: relative; overflow: hidden; margin-top: 22px; border-radius: 22px; padding: 26px; color: #fff;
   background: linear-gradient(120deg, #5b2fd6 0%, #2a5bd6 50%, #0fa3a3 100%); background-size: 200% 200%; animation: gradmove 12s ease infinite;
   box-shadow: 0 22px 50px rgba(60,50,200,.35); border: 1px solid rgba(255,255,255,.25); }
 @keyframes gradmove { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 .alerts-hero::after { content: "🔔"; position: absolute; right: 18px; top: -10px; font-size: 7rem; opacity: .12; transform: rotate(14deg); pointer-events: none; }
 .alerts-hero h2 { font-size: 1.5rem; letter-spacing: -.02em; }
 .alerts-hero .lead2 { color: #e4e9ff; font-size: .95rem; margin-top: 2px; max-width: 640px; }
-.alerts-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.1fr); gap: 20px; margin-top: 18px; }
+.stepper { display: flex; gap: 10px; margin: 18px 0 4px; flex-wrap: wrap; }
+.st { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); font-size: .84rem; font-weight: 600; }
+.st b { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.25); font-size: .8rem; }
+.st.done { background: rgba(47,208,123,.25); border-color: rgba(47,208,123,.6); }
+.st.done b { background: #2fd07b; color: #05361d; }
+.st.now { background: #fff; color: #3a2bb5; box-shadow: 0 0 0 4px rgba(255,255,255,.25); }
+.st.now b { background: #3a2bb5; color: #fff; }
+.alerts-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.1fr); gap: 20px; margin-top: 14px; }
 .alerts-form, .alerts-list { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); border-radius: 16px; padding: 16px; backdrop-filter: blur(8px); }
-.alerts-form .stack { margin-top: 0; }
 .alerts-hero .field label { color: #e4e9ff; }
 .alerts-hero select, .alerts-hero input { background: rgba(255,255,255,.95); color: #0f172a; border-color: transparent; }
 .alerts-hero .btn { background: #fff; color: #3a2bb5; }
 .alerts-hero .btn:hover { box-shadow: 0 8px 22px rgba(0,0,0,.25); }
 .alerts-hero .btn.secondary { background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.35); }
 .alerts-hero .msg { color: #fff3c4; }
-.alerts-hero .alert-item { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.3); color: #fff; animation: pop .35s ease both; }
-.alerts-hero .sub-data { color: #d7defc; }
-.alerts-hero .empty { color: #e4e9ff; font-size: .9rem; }
+.alert-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: .88rem; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); animation: pop .35s ease both; }
+.alert-item .sub-data { color: #d7defc; }
+.empty { color: #e4e9ff; font-size: .9rem; }
 @keyframes pop { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* Tabla: ordenar y paginar */
+/* ---------- Tabla ---------- */
+input[type=text], input[type=email], input[type=password], input[type=number], select { width: 100%; font: inherit; font-size: .92rem; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.stack { display: grid; gap: 12px; margin-top: 14px; }
+.field { display: grid; gap: 5px; }
+.field label { font-size: .78rem; font-weight: 600; color: var(--muted); }
+.msg { font-size: .84rem; color: var(--warn-ink); min-height: 1em; }
+.check { display: flex; align-items: center; gap: 8px; font-size: .86rem; color: var(--muted); cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.table-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.upd { font-size: .8rem; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.upd i { width: 8px; height: 8px; border-radius: 50%; background: #2fd07b; }
+.table-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0 10px; }
+.sort-mobile { display: none; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; min-width: 720px; }
+th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-weight: 650; }
+td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tbody tr { cursor: pointer; transition: background .12s; }
+tbody tr:hover { background: var(--surface-2); }
+.zone-name { font-weight: 650; }
+.sub-data { display: block; font-size: .76rem; color: var(--muted); margin-top: 1px; }
+.pbar { height: 6px; border-radius: 3px; background: var(--bar-bg); margin-top: 6px; overflow: hidden; width: 120px; }
+.pbar i { display: block; height: 100%; background: var(--bar); border-radius: 3px; }
 .th-btn { all: unset; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; }
 .th-btn:hover { color: var(--accent); }
 .th-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
@@ -203,33 +194,56 @@ th[aria-sort] .arr { opacity: 1; color: var(--accent); }
 th[aria-sort="descending"] .arr { transform: rotate(180deg); }
 .row-in { animation: rowin .4s ease both; }
 @keyframes rowin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.sk { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--bar-bg) 25%, var(--surface-2) 50%, var(--bar-bg) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; font-size: .86rem; color: var(--muted); }
 .pager-btns { display: flex; gap: 6px; }
-.pg-btn { min-width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; font-weight: 600; transition: transform .15s ease, background .15s ease; }
+.pg-btn { min-width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; font-weight: 600; transition: transform .15s ease; }
 .pg-btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--accent); }
 .pg-btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .pg-btn:disabled { opacity: .4; cursor: default; }
 
-/* Marcadores del mapa con pulso */
-.zm { display: block; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; position: relative; box-shadow: 0 0 0 0 rgba(255,176,32,.6); }
-.zm.ok { background: #2fd07b; }
-.zm.act { background: #ffb020; animation: ring 2s ease-out infinite; }
-@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(255,176,32,.65); } 100% { box-shadow: 0 0 0 16px rgba(255,176,32,0); } }
+/* ---------- Guía ---------- */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+.step { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; transition: transform .2s ease, box-shadow .2s ease; }
+.step:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+.step b.n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .85rem; margin-bottom: 8px; }
+.step h3 { font-size: 1rem; margin-bottom: 4px; }
+.step p { color: var(--muted); font-size: .88rem; }
+details.card { margin-top: 18px; }
+details summary { cursor: pointer; font-weight: 650; }
+.glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
+.glossary h4 { font-size: .88rem; margin-bottom: 3px; }
+.glossary p { font-size: .84rem; color: var(--muted); }
+.scale { display: grid; gap: 6px; margin-top: 8px; }
+.scale div { display: flex; gap: 8px; align-items: center; font-size: .82rem; color: var(--muted); }
+footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26px 16px 40px; }
 
-/* Entradas */
+/* ---------- Animaciones de entrada ---------- */
 .rise { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; animation-delay: var(--d, 0s); }
 @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 .js .reveal { opacity: 0; transform: translateY(20px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.7,.2,1); transition-delay: var(--d, 0s); }
 .js .reveal.in { opacity: 1; transform: none; }
-.kpi { transition: transform .2s ease, box-shadow .2s ease; }
-.kpi:hover { transform: translateY(-3px); }
-.step { transition: transform .2s ease, box-shadow .2s ease; }
-.step:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
 
+/* ---------- Responsive ---------- */
 @media (max-width: 980px) {
-  .hero-grid { grid-template-columns: 1fr; }
-  .alerts-grid { grid-template-columns: 1fr; }
+  .hero-grid, .alerts-grid { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .steps, .top3-grid { grid-template-columns: 1fr; }
 }
+@media (max-width: 700px) {
+  .sort-mobile { display: block; }
+  table { min-width: 0; }
+  thead { display: none; }
+  .table-wrap { border: 0; }
+  tbody tr { display: block; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; padding: 8px 4px; background: var(--surface); }
+  td { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; border: 0; padding: 7px 12px; text-align: right; }
+  td::before { content: attr(data-label); color: var(--muted); font-size: .74rem; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; text-align: left; flex: none; padding-top: 2px; }
+  td.zone-name { font-size: 1.02rem; text-align: left; justify-content: flex-start; }
+  td.zone-name::before { display: none; }
+  .pbar { margin-left: auto; }
+}
+@media (max-width: 520px) { .kpi-value { font-size: 1.7rem; } .hero { padding-bottom: 96px; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .js .reveal { opacity: 1; transform: none; }
@@ -244,13 +258,14 @@ th[aria-sort="descending"] .arr { transform: rotate(180deg); }
       <div class="brand"><span class="brand-dot"></span> Monitor Sísmico</div>
       <div class="top-actions">
         <span id="auth-status" class="chip">Conectando...</span>
-        <button class="icon-btn" onclick="alternarTema()" aria-label="Cambiar tema claro/oscuro">◐ Tema</button>
+        <button class="icon-btn" onclick="alternarTema()" aria-label="Cambiar tema claro u oscuro">◐ Tema</button>
       </div>
     </div>
     <div class="hero-grid">
-      <div class="hero-text rise">
-        <h1>¿Qué zonas del mundo están hoy <em>más activas de lo habitual</em>?</h1>
-        <p class="lead">Leemos cada hora los sismos reales del USGS y un modelo de IA compara cada región con su comportamiento histórico. Te avisamos por Telegram, en lenguaje claro. No predice terremotos: mide riesgo relativo.</p>
+      <div class="rise">
+        <h1>¿Qué zonas del mundo están hoy <em>más activas de lo normal</em>?</h1>
+        <p class="lead">Cada hora revisamos los temblores reales registrados en el mundo y comparamos cada región con lo que es normal para ella. Si algo se sale de lo habitual, te avisamos por Telegram, con palabras simples. <b>No predice terremotos</b>: dice si hoy hay más o menos riesgo que de costumbre.</p>
+        <div class="live-chip" id="ultimo-sismo"><i></i><span id="ultimo-sismo-txt"></span></div>
         <div class="cta-row">
           <a class="btn" href="#alertas" onclick="irAAlertas(event)">🔔 Activar mis alertas</a>
           <a class="btn ghost" id="cta-bot" href="#" target="_blank" rel="noopener" style="display:none;">💬 Preguntar al bot de Telegram</a>
@@ -259,9 +274,10 @@ th[aria-sort="descending"] .arr { transform: rotate(180deg); }
 
       <div class="account rise" id="cuenta" style="--d:.15s">
         <div id="login-box">
-          <h2>Tu cuenta</h2>
-          <p class="hint">Entra o crea una cuenta gratis para recibir avisos en tu Telegram.</p>
-          <div class="stack">
+          <h2>Crea tu cuenta gratis</h2>
+          <p class="hint">Para recibir avisos en tu Telegram cuando una región se active.</p>
+          <ul class="perks"><li>✓ Avisos claros en tu celular</li><li>✓ Tú eliges las regiones y qué tan sensible</li><li>✓ Pregunta al bot por cualquier sismo</li></ul>
+          <div class="stack" style="margin-top:10px;">
             <div class="field"><label for="email">Correo electrónico</label><input type="email" id="email" placeholder="tu@email.com" autocomplete="email"></div>
             <div class="field"><label for="password">Contraseña (mín. 6 caracteres)</label><input type="password" id="password" placeholder="••••••" autocomplete="current-password"></div>
             <div style="display:flex; gap:8px;">
@@ -290,41 +306,52 @@ th[aria-sort="descending"] .arr { transform: rotate(180deg); }
 </section>
 
 <main class="wrap">
-    <div class="map-card">
-    <div id="map" aria-label="Mapa mundial de sismos recientes y zonas monitoreadas"></div>
-    <span class="map-note" id="map-note">Cargando sismos…</span>
+  <div class="map-card">
+    <div id="map" aria-label="Mapa mundial de temblores recientes y regiones vigiladas"></div>
+    <span class="map-note" id="map-note">Cargando temblores…</span>
     <div class="map-legend">
-      <div class="lg"><i style="background:#5aa2ff"></i> Sismo M4.5+ (últimos 7 días) · el tamaño indica la magnitud</div>
-      <div class="lg"><i style="background:#2fd07b;border:2px solid #fff"></i> ✓ Zona monitoreada: actividad normal</div>
-      <div class="lg"><i style="background:#ffb020;border:2px solid #fff"></i> ⚠ Zona monitoreada: señal local activa</div>
+      <div class="lg"><i style="background:#5aa2ff"></i> Temblor fuerte (M4.5+) de los últimos 7 días · más grande = más fuerte</div>
+      <div class="lg"><i style="background:#2fd07b;border:2px solid #fff"></i> ✓ Región vigilada: normal</div>
+      <div class="lg"><i style="background:#ffb020;border:2px solid #fff"></i> ⚠ Región vigilada: con actividad reciente</div>
     </div>
   </div>
 
   <section class="kpis" aria-label="Indicadores">
-    <div class="kpi"><div class="kpi-label">Regiones monitoreadas</div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-sub">Cinturón de Fuego y zonas activas</div></div>
-    <div class="kpi"><div class="kpi-label">Con señal local activa</div><div class="kpi-value" id="kpi-activas">—</div><div class="kpi-sub">Temblores cercanos o profundos en 96 h</div></div>
-    <div class="kpi"><div class="kpi-label">En actividad normal</div><div class="kpi-value" id="kpi-normales">—</div><div class="kpi-sub">Sin repunte reciente</div></div>
-    <div class="kpi"><div class="kpi-label">Sismos M4.5+ en 7 días</div><div class="kpi-value" id="kpi-quakes">—</div><div class="kpi-sub" id="kpi-max">En todo el mundo (USGS)</div></div>
+    <div class="kpi"><div class="kpi-label">Regiones vigiladas</div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-sub">Cinturón de Fuego y zonas activas</div></div>
+    <div class="kpi"><div class="kpi-label">Con actividad reciente</div><div class="kpi-value" id="kpi-activas">—</div><div class="kpi-sub">Temblores cerca en las últimas 96 horas</div></div>
+    <div class="kpi"><div class="kpi-label">En calma</div><div class="kpi-value" id="kpi-normales">—</div><div class="kpi-sub">Sin cambios recientes</div></div>
+    <div class="kpi"><div class="kpi-label">Temblores fuertes (7 días)</div><div class="kpi-value" id="kpi-quakes">—</div><div class="kpi-sub" id="kpi-max">En todo el mundo</div></div>
   </section>
+
+  <h2 class="sec-title">🔥 Las regiones más activas hoy</h2>
+  <p class="sec-sub">Ordenadas por cuánto se alejan de lo normal. «Lo normal» es el riesgo habitual de esa región.</p>
+  <div class="top3-grid" id="top3-grid">
+    <div class="tcard"><span class="sk" style="height:12px;width:40%"></span><span class="sk" style="height:20px;width:70%;margin-top:10px"></span><span class="sk" style="height:34px;width:55%;margin-top:14px"></span></div>
+    <div class="tcard"><span class="sk" style="height:12px;width:40%"></span><span class="sk" style="height:20px;width:70%;margin-top:10px"></span><span class="sk" style="height:34px;width:55%;margin-top:14px"></span></div>
+    <div class="tcard"><span class="sk" style="height:12px;width:40%"></span><span class="sk" style="height:20px;width:70%;margin-top:10px"></span><span class="sk" style="height:34px;width:55%;margin-top:14px"></span></div>
+  </div>
 
   <section class="alerts-hero" id="alertas" style="display:none;">
     <h2>🔔 Mis alertas</h2>
     <p class="lead2">Elige una región y qué tan sensible quieres ser. Cuando el riesgo la alcance, recibirás un aviso claro en tu Telegram.</p>
+    <div class="stepper" id="stepper">
+      <div class="st done" id="st1"><b>✓</b> Cuenta creada</div>
+      <div class="st" id="st2"><b>2</b> Vincular Telegram</div>
+      <div class="st" id="st3"><b>3</b> Crear una alerta</div>
+    </div>
     <div class="alerts-grid">
       <div class="alerts-form">
-        <div class="stack">
-          <div class="field"><label for="select-zona">1. Región a vigilar</label><select id="select-zona"></select></div>
+        <div class="stack" style="margin-top:0;">
+          <div class="field"><label for="select-zona">1. ¿Qué región quieres vigilar?</label><select id="select-zona"></select></div>
           <div class="field">
-            <label for="umbral">2. Sensibilidad (multiplicador)</label>
-            <input type="number" id="umbral" step="0.1" min="0.1" max="50" value="2.0" list="sugerencias-umbral" placeholder="Ej. 1.5, 2.0">
-            <datalist id="sugerencias-umbral">
-              <option value="0.5">0.5x — Prueba (avisa casi siempre)</option>
-              <option value="1.0">1.0x — Nivel habitual</option>
-              <option value="1.3">1.3x — Repunte leve</option>
-              <option value="1.5">1.5x — Actividad moderada</option>
-              <option value="2.0">2.0x — Enjambre activo (recomendado)</option>
-              <option value="3.0">3.0x — Anomalía alta</option>
-            </datalist>
+            <label for="umbral">2. ¿Cuándo quieres que te avisemos?</label>
+            <select id="umbral">
+              <option value="2.0" selected>Cuando el riesgo sea el doble de lo normal (recomendado)</option>
+              <option value="3.0">Solo si es muy alto: 3 veces lo normal</option>
+              <option value="1.5">Cuando suba un poco: 1,5 veces lo normal</option>
+              <option value="1.2">Ante cualquier aumento (muy sensible)</option>
+              <option value="0.5">Modo prueba: avisar casi siempre</option>
+            </select>
           </div>
           <button class="btn" style="justify-content:center;" onclick="guardarAlerta()">+ Activar alerta</button>
           <p id="alerta-msg" class="msg"></p>
@@ -336,50 +363,68 @@ th[aria-sort="descending"] .arr { transform: rotate(180deg); }
     </div>
   </section>
 
-  <section class="card reveal" id="zonas" style="margin-top:18px;">
-    <h2>Regiones vigiladas</h2>
-    <p class="hint">Toca una fila para verla en el mapa y los encabezados para ordenar. «Riesgo habitual» es la probabilidad normal de un sismo fuerte (M6.5+) en una semana cualquiera.</p>
+  <section class="card reveal" id="zonas" style="margin-top:22px;">
+    <div class="table-head">
+      <div>
+        <h2>Todas las regiones vigiladas</h2>
+        <p class="hint">Toca una región para verla en el mapa. «Riesgo hoy» compara esta semana con lo normal de esa región: 1 vez es lo normal, 2 veces es el doble.</p>
+      </div>
+      <span class="upd" id="upd"></span>
+    </div>
     <div class="table-toolbar">
       <div class="field" style="flex:1; min-width:200px; max-width:320px;">
         <input type="text" id="buscador-zona" placeholder="Buscar región (Chile, Japón, México…)" oninput="filtrarTabla()" aria-label="Buscar región">
       </div>
-      <label class="check"><input type="checkbox" id="solo-activas" onchange="filtrarTabla()"> Solo con señal activa</label>
+      <label class="check"><input type="checkbox" id="solo-activas" onchange="filtrarTabla()"> Solo con actividad reciente</label>
+      <select class="sort-mobile" id="orden-movil" onchange="ordenarPor(this.value)" aria-label="Ordenar por">
+        <option value="hoy">Ordenar: riesgo hoy</option>
+        <option value="zona">Ordenar: nombre</option>
+        <option value="tasa">Ordenar: riesgo normal</option>
+        <option value="cercanos">Ordenar: temblores cerca</option>
+        <option value="profundos">Ordenar: temblores profundos</option>
+      </select>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th data-k="zona"><button class="th-btn" onclick="ordenarPor('zona')">Región <span class="arr">▲</span></button></th>
-            <th data-k="tasa"><button class="th-btn" onclick="ordenarPor('tasa')">Riesgo habitual M6.5+ / 7 días <span class="arr">▲</span></button></th>
-            <th data-k="cercanos"><button class="th-btn" onclick="ordenarPor('cercanos')">Cercanos &lt;200 km (96 h) <span class="arr">▲</span></button></th>
-            <th data-k="profundos"><button class="th-btn" onclick="ordenarPor('profundos')">Profundos 70–150 km <span class="arr">▲</span></button></th>
-            <th data-k="estado"><button class="th-btn" onclick="ordenarPor('estado')">Estado <span class="arr">▲</span></button></th>
+            <th data-k="hoy"><button class="th-btn" onclick="ordenarPor('hoy')">Riesgo hoy <span class="arr">▲</span></button></th>
+            <th data-k="tasa"><button class="th-btn" onclick="ordenarPor('tasa')">Riesgo normal <span class="arr">▲</span></button></th>
+            <th data-k="cercanos"><button class="th-btn" onclick="ordenarPor('cercanos')">Temblores cerca <span class="arr">▲</span></button></th>
+            <th data-k="profundos"><button class="th-btn" onclick="ordenarPor('profundos')">Temblores profundos <span class="arr">▲</span></button></th>
           </tr>
         </thead>
-        <tbody id="zonas-body"><tr><td colspan="5">Cargando datos en tiempo real…</td></tr></tbody>
+        <tbody id="zonas-body">
+          <tr><td colspan="5"><span class="sk" style="height:16px;width:90%"></span></td></tr>
+          <tr><td colspan="5"><span class="sk" style="height:16px;width:80%"></span></td></tr>
+          <tr><td colspan="5"><span class="sk" style="height:16px;width:85%"></span></td></tr>
+        </tbody>
       </table>
     </div>
     <div class="pager" id="pager"></div>
   </section>
 
   <section class="steps" aria-label="Cómo funciona">
-    <div class="step"><b class="n">1</b><h3>Datos reales en vivo</h3><p>Cada hora leemos los sismos de las últimas 96 horas alrededor de cada región tectónica (fuente: USGS).</p></div>
-    <div class="step"><b class="n">2</b><h3>Modelo de IA</h3><p>Compara la actividad actual con el historial y calcula si el riesgo semanal es normal (<b>1x</b>) o mayor (<b>2x o más</b>).</p></div>
-    <div class="step"><b class="n">3</b><h3>Avisos que se entienden</h3><p>Alertas en Telegram y un bot que responde en lenguaje claro, incluso sobre sismos de hace años.</p></div>
+    <div class="step"><b class="n">1</b><h3>Miramos los temblores reales</h3><p>Cada hora leemos los temblores de los últimos 4 días registrados por el USGS, el servicio geológico de EE. UU.</p></div>
+    <div class="step"><b class="n">2</b><h3>La IA compara con lo normal</h3><p>Un modelo de inteligencia artificial calcula si esta semana hay más riesgo de lo habitual en cada región.</p></div>
+    <div class="step"><b class="n">3</b><h3>Te avisamos en simple</h3><p>Recibes un mensaje claro en Telegram y puedes preguntarle al bot, incluso por sismos de hace años.</p></div>
   </section>
 
   <details class="card">
-    <summary>📖 ¿Cómo interpretar los datos?</summary>
+    <summary>📖 ¿Cómo leer estos datos? (en simple)</summary>
     <div class="glossary">
-      <div><h4>Riesgo habitual M6.5+ (7 días)</h4><p>Probabilidad normal de un terremoto fuerte en esa región durante una semana cualquiera, según el historial.</p></div>
-      <div><h4>Sismos cercanos (&lt;200 km)</h4><p>Temblores detectados en las últimas 96 horas cerca del núcleo de la zona.</p></div>
-      <div><h4>Sismos profundos (70–150 km)</h4><p>Temblores a profundidad intermedia en zonas de subducción; un indicador de tensión tectónica.</p></div>
-      <div><h4>Multiplicador (0.5x, 1x, 2x, 3x)</h4><p><b>1x</b> es lo habitual. <b>2x</b> significa que la estimación actual duplica la probabilidad normal de esa zona. Una zona de riesgo muy bajo puede marcar 10x y seguir siendo improbable.</p></div>
+      <div><h4>Riesgo hoy</h4><p>Cuántas veces más (o menos) probable es hoy un terremoto fuerte comparado con una semana normal en esa región. <b>1 vez</b> = normal · <b>2 veces</b> = el doble · <b>5 veces</b> = cinco veces más.</p>
+        <div class="scale"><div><span class="pill ok">✓ Normal</span> hasta 1,2 veces</div><div><span class="pill mid">↗ Algo por encima</span> 1,2 a 2 veces</div><div><span class="pill warn">⚠ Por encima</span> 2 a 4 veces</div><div><span class="pill hot">⚠ Muy por encima</span> 4 veces o más</div></div></div>
+      <div><h4>Riesgo normal</h4><p>La probabilidad que esa región tiene, en una semana cualquiera, de un terremoto fuerte (magnitud 6,5 o más), según su historia.</p></div>
+      <div><h4>Temblores cerca</h4><p>Temblores detectados en los últimos 4 días a menos de 200 km del centro de la región.</p></div>
+      <div><h4>Temblores profundos</h4><p>Temblores a 70–150 km bajo tierra, donde una placa se hunde bajo otra. Se sienten menos, pero indican tensión.</p></div>
+      <div><h4>¿Por qué un número alto no es alarmante?</h4><p>Si una región casi nunca tiene terremotos, multiplicar su riesgo por 10 sigue dando un riesgo pequeño. Por eso mostramos siempre la probabilidad real junto al «veces lo normal».</p></div>
     </div>
   </details>
 </main>
 
-<footer>Datos: USGS · Modelo propio de ML · Es una estimación estadística, no un pronóstico. Ante un sismo real sigue las indicaciones de protección civil.<br>Mapa base © Esri, HERE, Garmin, OpenStreetMap contributors</footer>
+<footer>Datos: USGS · Modelo propio de IA · Es una estimación estadística, no un pronóstico. Ante un sismo real, sigue las indicaciones de protección civil.<br>Mapa base © Esri, HERE, Garmin, OpenStreetMap contributors</footer>
 
 <script>
 const SUPABASE_URL = 'https://mknmzuvagniweqlljund.supabase.co';
@@ -389,8 +434,34 @@ const API = 'https://ultimo-modulo.onrender.com';
 
 let zonasCache = [];
 let map, zonaLayer, quakeLayer;
+let usuarioActual = null, tgVinculado = false, nAlertas = 0;
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = (n, d = 1) => Number(n).toFixed(d).replace('.', ',');
 const esActiva = z => Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof70_150 || 0) >= 2;
+const multDe = z => (z.multiplicador_riesgo == null ? null : Number(z.multiplicador_riesgo));
+const probDe = z => (z.probabilidad_m65_7d == null ? null : Number(z.probabilidad_m65_7d));
+
+/* Traduce el multiplicador a lenguaje de todos los días */
+function nivelRiesgo(z) {
+  const m = multDe(z);
+  if (m == null) return { cls: 'wait', lvl: 'wait', etiqueta: '… Calculando', veces: 'Calculando…' };
+  const sinSismos = Number(z.loc200_n96_con || 0) === 0 && Number(z.loc500_n96_con || 0) === 0;
+  const veces = m >= 1.1 ? `${fmt(m)} veces lo normal` : m >= 0.9 ? 'igual que lo normal' : 'menos de lo normal';
+  if (m >= 1.5 && sinSismos) return { cls: 'mid', lvl: 'mid', etiqueta: 'ℹ Alza solo estadística', veces };
+  if (m >= 4) return { cls: 'hot', lvl: 'hot', etiqueta: '⚠ Muy por encima de lo normal', veces };
+  if (m >= 2) return { cls: 'warn', lvl: 'warn', etiqueta: '⚠ Por encima de lo normal', veces };
+  if (m >= 1.2) return { cls: 'mid', lvl: 'mid', etiqueta: '↗ Algo por encima', veces };
+  return { cls: 'ok', lvl: 'ok', etiqueta: '✓ Normal', veces };
+}
+
+function haceTiempo(fecha) {
+  const min = Math.max(0, Math.round((Date.now() - new Date(fecha).getTime()) / 60000));
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  return h < 48 ? `hace ${h} h` : `hace ${Math.round(h / 24)} días`;
+}
 
 /* ---------- Tema ---------- */
 function alternarTema() {
@@ -414,22 +485,26 @@ async function cargarSismosRecientes() {
   const nota = document.getElementById('map-note');
   try {
     const r = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson');
-    const gj = await r.json();
-    const ev = gj.features || [];
+    const ev = (await r.json()).features || [];
     ev.sort((a, b) => a.properties.mag - b.properties.mag);
     ev.forEach(f => {
       const [lon, lat] = f.geometry.coordinates;
       const m = f.properties.mag;
       L.circleMarker([lat, lon], { radius: Math.max(3, (m - 3.6) * 3.6), color: '#9cc6ff', weight: .6, fillColor: '#5aa2ff', fillOpacity: .45 })
-        .bindPopup(`<b>M${m.toFixed(1)}</b><br>${esc(f.properties.place)}<br><small>${new Date(f.properties.time).toLocaleString()}</small>`)
+        .bindPopup(`<b>Magnitud ${m.toFixed(1)}</b><br>${esc(f.properties.place)}<br><small>${new Date(f.properties.time).toLocaleString()}</small>`)
         .addTo(quakeLayer);
     });
-    const mayor = ev[ev.length - 1];
     animarNumero('kpi-quakes', ev.length);
-    if (mayor) document.getElementById('kpi-max').textContent = `Mayor: M${mayor.properties.mag.toFixed(1)} · ${mayor.properties.place}`;
-    nota.textContent = `${ev.length} sismos M4.5+ en 7 días`;
+    const mayor = ev[ev.length - 1];
+    if (mayor) {
+      const p = mayor.properties;
+      document.getElementById('kpi-max').textContent = `El mayor: magnitud ${p.mag.toFixed(1)}`;
+      document.getElementById('ultimo-sismo-txt').textContent = `El temblor más fuerte de la semana: magnitud ${p.mag.toFixed(1)} · ${p.place} · ${haceTiempo(p.time)}`;
+      document.getElementById('ultimo-sismo').style.display = 'inline-flex';
+    }
+    nota.textContent = `${ev.length} temblores fuertes en 7 días`;
   } catch (e) {
-    nota.textContent = 'No se pudieron cargar los sismos recientes';
+    nota.textContent = 'No se pudieron cargar los temblores recientes';
   }
 }
 
@@ -439,37 +514,60 @@ function pintarZonasEnMapa() {
   zonasCache.forEach(z => {
     if (z.lat_centro == null || z.lon_centro == null) return;
     const act = esActiva(z);
+    const n = nivelRiesgo(z);
     const icon = L.divIcon({ className: '', html: `<span class="zm ${act ? 'act' : 'ok'}"></span>`, iconSize: [18, 18], iconAnchor: [9, 9] });
     L.marker([z.lat_centro, z.lon_centro], { icon })
       .bindTooltip(`${act ? '⚠' : '✓'} ${esc(z.zona)}`, { direction: 'top', offset: [0, -8] })
-      .bindPopup(`<b>${esc(z.zona)}</b><br>${act ? '⚠ Señal local activa' : '✓ Actividad normal'}<br><small>Cercanos &lt;200 km: ${z.loc200_n96_con || 0} · Profundos: ${z.lat_n96_prof70_150 || 0}</small>`)
+      .bindPopup(`<b>${esc(z.zona)}</b><br>${esc(n.etiqueta)}${multDe(z) != null ? ` · ${esc(n.veces)}` : ''}<br><small>Temblores cerca: ${z.loc200_n96_con || 0} · profundos: ${z.lat_n96_prof70_150 || 0}</small>`)
       .addTo(zonaLayer);
   });
 }
 
 function irAZona(nombre) {
   const z = zonasCache.find(x => x.zona === nombre);
-  if (!z || !map) return;
+  if (!z || !map || z.lat_centro == null) return;
   map.flyTo([z.lat_centro, z.lon_centro], 4, { duration: .9 });
   document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+/* ---------- Top 3 ---------- */
+function renderizarTop3() {
+  const hayMult = zonasCache.some(z => multDe(z) != null);
+  const rank = [...zonasCache].sort((a, b) => hayMult
+    ? (multDe(b) ?? -1) - (multDe(a) ?? -1)
+    : (Number(b.loc200_n96_con || 0) + Number(b.lat_n96_prof70_150 || 0)) - (Number(a.loc200_n96_con || 0) + Number(a.lat_n96_prof70_150 || 0)));
+  const medallas = ['🥇', '🥈', '🥉'];
+  document.getElementById('top3-grid').innerHTML = rank.slice(0, 3).map((z, i) => {
+    const n = nivelRiesgo(z);
+    const m = multDe(z), p = probDe(z), base = Number(z.tasa_historica_m65_7d || 0);
+    return `
+      <div class="tcard l-${n.lvl} row-in" style="animation-delay:${i * 90}ms" data-zona="${esc(z.zona)}">
+        <div class="t-rank">${medallas[i]} N.º ${i + 1}</div>
+        <div class="t-name">${esc(z.zona)}</div>
+        <div class="t-big">${m != null ? fmt(m) + '×' : '—'} <small>${m != null ? 'veces lo normal' : 'calculando…'}</small></div>
+        <div style="margin-top:8px"><span class="pill ${n.cls}">${esc(n.etiqueta)}</span></div>
+        <div class="t-line">${p != null ? `Probabilidad de un terremoto fuerte esta semana: <b>${fmt(p * 100, 2)} %</b><br>` : ''}Lo normal aquí: <b>${fmt(base * 100, 2)} %</b></div>
+      </div>`;
+  }).join('');
+}
+
 /* ---------- Tabla (orden + paginación) ---------- */
 const PAGE_SIZE = 5;
-let orden = { key: 'zona', dir: 1 };
+let orden = { key: 'hoy', dir: -1 };
 let pagina = 1;
 let listaFiltrada = [];
 const valorOrden = {
   zona: z => z.zona.toLowerCase(),
+  hoy: z => multDe(z) ?? -1,
   tasa: z => Number(z.tasa_historica_m65_7d || 0),
   cercanos: z => Number(z.loc200_n96_con || 0),
   profundos: z => Number(z.lat_n96_prof70_150 || 0),
-  estado: z => (esActiva(z) ? 1 : 0),
 };
 
 function ordenarPor(k) {
   if (orden.key === k) orden.dir *= -1;
   else { orden.key = k; orden.dir = k === 'zona' ? 1 : -1; }
+  document.getElementById('orden-movil').value = k;
   pagina = 1;
   filtrarTabla(false);
 }
@@ -495,23 +593,23 @@ function renderizarTabla() {
   const ini = (pagina - 1) * PAGE_SIZE;
   tbody.innerHTML = listaFiltrada.slice(ini, ini + PAGE_SIZE).map((z, i) => {
     const tasa = Number(z.tasa_historica_m65_7d || 0);
-    const pct = (tasa * 100).toFixed(2);
     const semanasEq = tasa > 0 ? Math.round(1 / tasa) : 52;
+    const anios = semanasEq >= 104 ? `~1 cada ${fmt(semanasEq / 52)} años` : `~1 cada ${semanasEq} semanas`;
     const total200 = Number(z.loc200_n96_con || 0);
     const leves200 = Number(z.loc200_n96_sin45 || 0);
     const mod200 = Math.max(0, total200 - leves200);
     const prof = Number(z.lat_n96_prof70_150 || 0);
-    const act = esActiva(z);
+    const n = nivelRiesgo(z);
+    const m = multDe(z), p = probDe(z);
     return `
-      <tr class="row-in" style="animation-delay:${i * 60}ms" onclick="irAZona('${esc(z.zona).replace(/'/g, '&#39;')}')">
-        <td class="zone-name">${esc(z.zona)}</td>
-        <td><b>${pct}%</b><span class="sub-data">~1 sismo fuerte cada ${semanasEq} sem.</span>
-          <div class="pbar" aria-hidden="true"><i style="width:${Math.max(4, (tasa / maxTasa) * 100)}%"></i></div></td>
-        <td><b>${total200}</b> ${total200 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">${mod200} moderados (M4.5+) · ${leves200} leves</span></td>
-        <td><b>${prof}</b><span class="sub-data">${prof > 0 ? 'Con actividad profunda' : 'Sin eventos profundos'}</span></td>
-        <td>${act
-          ? '<span class="pill warn">⚠ Señal local activa</span><span class="sub-data">Repunte en 96 h</span>'
-          : '<span class="pill ok">✓ Actividad normal</span><span class="sub-data">Sin repunte reciente</span>'}</td>
+      <tr class="row-in" style="animation-delay:${i * 60}ms" data-zona="${esc(z.zona)}">
+        <td class="zone-name" data-label="Región">${esc(z.zona)}</td>
+        <td data-label="Riesgo hoy"><div><span class="pill ${n.cls}">${esc(n.etiqueta)}</span>
+          <span class="sub-data">${m != null ? `<b>${fmt(m)}×</b> · ${esc(n.veces)}` : 'Se calcula en la próxima revisión'}${p != null ? `<br>${fmt(p * 100, 2)} % de un terremoto fuerte esta semana` : ''}</span></div></td>
+        <td data-label="Riesgo normal"><div><b>${fmt(tasa * 100, 2)} %</b><span class="sub-data">${anios}</span>
+          <div class="pbar" aria-hidden="true"><i style="width:${Math.max(4, (tasa / maxTasa) * 100)}%"></i></div></div></td>
+        <td data-label="Temblores cerca"><div><b>${total200}</b> ${total200 === 1 ? 'temblor' : 'temblores'}<span class="sub-data">a menos de 200 km · ${mod200} fuertes (M4.5+)</span></div></td>
+        <td data-label="Temblores profundos"><div><b>${prof}</b><span class="sub-data">${prof > 0 ? 'a 70–150 km bajo tierra' : 'ninguno reciente'}</span></div></td>
       </tr>`;
   }).join('');
 
@@ -550,7 +648,7 @@ function animarNumero(id, destino, ms = 900) {
 async function cargarZonas() {
   const { data, error } = await db.from('zonas_sismicas').select('*').order('zona');
   if (error) {
-    document.getElementById('zonas-body').innerHTML = `<tr><td colspan="5" style="color:#e34948;">Error al cargar datos: ${esc(error.message)}</td></tr>`;
+    document.getElementById('zonas-body').innerHTML = `<tr><td colspan="5" style="color:#e34948;">No se pudieron cargar los datos: ${esc(error.message)}</td></tr>`;
     return;
   }
   zonasCache = data || [];
@@ -559,12 +657,23 @@ async function cargarZonas() {
   animarNumero('kpi-total', zonasCache.length);
   animarNumero('kpi-activas', activas);
   animarNumero('kpi-normales', Math.max(0, zonasCache.length - activas));
+  const fechas = zonasCache.map(z => z.actualizado_en).filter(Boolean).map(f => new Date(f).getTime());
+  if (fechas.length) document.getElementById('upd').innerHTML = `<i></i> Actualizado ${haceTiempo(Math.max(...fechas))}`;
   pintarZonasEnMapa();
+  renderizarTop3();
   filtrarTabla();
 }
 
 /* ---------- Usuario ---------- */
-let usuarioActual = null;
+function actualizarPasos() {
+  const set = (id, estado, num) => {
+    const el = document.getElementById(id);
+    el.className = 'st ' + estado;
+    el.querySelector('b').textContent = estado === 'done' ? '✓' : num;
+  };
+  set('st2', tgVinculado ? 'done' : 'now', 2);
+  set('st3', nAlertas > 0 ? 'done' : (tgVinculado ? 'now' : ''), 3);
+}
 
 async function actualizarUIUsuario() {
   const { data: { user } } = await db.auth.getUser();
@@ -617,28 +726,39 @@ async function cerrarSesion() {
   actualizarUIUsuario();
 }
 
+function textoUmbral(u) {
+  u = Number(u);
+  if (u <= 0.5) return 'casi siempre (modo prueba)';
+  if (u < 1.3) return 'ante cualquier aumento';
+  if (Math.abs(u - 2) < 0.05) return 'el doble de lo normal';
+  return `${fmt(u)} veces lo normal`;
+}
+
 async function cargarMisAlertas() {
   const { data } = await db.from('alertas_usuario').select('*');
-  const ul = document.getElementById('mis-alertas');
-  ul.innerHTML = (data || []).map(a =>
+  nAlertas = (data || []).length;
+  document.getElementById('mis-alertas').innerHTML = (data || []).map(a =>
     `<li class="alert-item">
-      <span>🔔 <b>${esc(a.zona)}</b><span class="sub-data">Avisar desde ${esc(a.umbral_multiplicador)}x</span></span>
+      <span>🔔 <b>${esc(a.zona)}</b><span class="sub-data">Te avisamos cuando el riesgo llegue a ${esc(textoUmbral(a.umbral_multiplicador))} o más</span></span>
       <button class="btn secondary sm" onclick="borrarAlerta('${esc(a.id)}')">Eliminar</button>
     </li>`
   ).join('') || '<li class="empty">Aún no tienes alertas. Elige una región y pulsa «Activar alerta».</li>';
+  actualizarPasos();
 }
 
 async function estadoTelegram() {
   const { data } = await db.from('vinculos_telegram').select('chat_id,codigo').maybeSingle();
   const el = document.getElementById('tg-estado');
   const btn = document.getElementById('btn-tg');
-  if (data && data.chat_id) {
+  tgVinculado = !!(data && data.chat_id);
+  if (tgVinculado) {
     el.textContent = '✅ Telegram vinculado: recibirás tus alertas en tu chat.';
     btn.style.display = 'none';
   } else {
     el.textContent = '📱 Telegram sin vincular: no recibirás avisos hasta vincularlo.';
     btn.style.display = '';
   }
+  actualizarPasos();
 }
 
 async function vincularTelegram() {
@@ -663,14 +783,11 @@ async function guardarAlerta() {
   const { data: { user } } = await db.auth.getUser();
   const zona = document.getElementById('select-zona').value;
   const umbral = parseFloat(document.getElementById('umbral').value);
-  if (!zona || Number.isNaN(umbral) || umbral <= 0) {
-    msgEl.textContent = 'Escribe un multiplicador mayor que 0 (por ejemplo 2.0).';
-    return;
-  }
+  if (!zona || Number.isNaN(umbral) || umbral <= 0) { msgEl.textContent = 'Elige una región y cuándo quieres el aviso.'; return; }
   const { error } = await db.from('alertas_usuario').insert({ user_id: user.id, zona, umbral_multiplicador: umbral });
-  if (error) { msgEl.textContent = 'Error al guardar alerta: ' + error.message; return; }
+  if (error) { msgEl.textContent = 'No se pudo guardar la alerta: ' + error.message; return; }
   msgEl.style.color = '#d9ffe8';
-  msgEl.textContent = `Alerta guardada: ${zona} en ${umbral}x.`;
+  msgEl.textContent = `Listo: te avisaremos sobre ${zona} ${textoUmbral(umbral)}.`;
   cargarMisAlertas();
 }
 
@@ -684,6 +801,8 @@ document.documentElement.classList.add('js');
 document.querySelectorAll('.kpi, .step, details.card').forEach((el, i) => { el.classList.add('reveal'); el.style.setProperty('--d', (i % 4) * 0.08 + 's'); });
 const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .12 });
 document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+document.getElementById('zonas-body').addEventListener('click', e => { const tr = e.target.closest('tr[data-zona]'); if (tr) irAZona(tr.dataset.zona); });
+document.getElementById('top3-grid').addEventListener('click', e => { const c = e.target.closest('[data-zona]'); if (c) irAZona(c.dataset.zona); });
 iniciarMapa();
 cargarZonas();
 actualizarUIUsuario();

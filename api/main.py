@@ -332,6 +332,7 @@ def ejecutar_vigilancia(key: str = Query(default="")):
             "lat_n96_prof70_150": prof70_150,
             "multiplicador_riesgo": pred["multiplicador_riesgo"],
             "probabilidad_m65_7d": pred["probabilidad_m65_7d"],
+            "actualizado_en": datetime.now(timezone.utc).isoformat(),
         }
         update_data = {k: v for k, v in candidatos.items() if k in columnas_existentes}
         if update_data:
