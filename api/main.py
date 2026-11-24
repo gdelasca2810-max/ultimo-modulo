@@ -287,9 +287,15 @@ def ejecutar_vigilancia(key: str = Query(default="")):
     resultados_zona = {}
     detalles_zona = {}
     for zona in lista_zonas:
-        if zona not in ZONAS_COORDS:
+        fila = next((z for z in zonas_db if z["zona"] == zona), {})
+        if fila.get("lat_centro") is not None and fila.get("lon_centro") is not None:
+            clat, clon = float(fila["lat_centro"]), float(fila["lon_centro"])
+        elif zona in ZONAS_COORDS:
+            clat, clon = ZONAS_COORDS[zona]
+        else:
             continue
-        clat, clon = ZONAS_COORDS[zona]
+        if zona not in artefacto["tasas_zona"]:
+            continue
         loc200_con = loc200_sin45 = loc500_con = prof70_150 = 0
 
         for ev in eventos:
