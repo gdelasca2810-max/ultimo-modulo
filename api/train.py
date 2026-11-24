@@ -41,7 +41,7 @@ def construir_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def entrenar():
-    df = pd.read_csv("zona_dia_11a.csv")
+    df = pd.read_csv("data/zona_dia_11a.csv")
     df["t_eval_utc"] = pd.to_datetime(df["t_eval_utc"])
     df = construir_features(df)
 

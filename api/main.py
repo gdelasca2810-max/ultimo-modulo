@@ -125,6 +125,7 @@ def describir_nivel_usuario(
     tasa_base: float,
     loc200_con: int,
     prof70_150: int,
+    loc500_con: int,
 ):
     frec_txt = formatear_frecuencia_habitual(tasa_base)
 
@@ -132,10 +133,16 @@ def describir_nivel_usuario(
         estado = "🔴 ELEVADO (Enjambre sísmico local activo)"
         resumen_simple = "Hay actividad local relevante y la estimación a 7 días está por encima de lo habitual."
     elif multiplicador >= 2.0 and loc200_con == 0:
-        estado = "🟡 AVISO POR MODELO (Sin sismos cercanos <200 km)"
+        estado = "🟡 AVISO POR MODELO (Sin sismos a menos de 200 km)"
         resumen_simple = (
             f"El modelo marca {multiplicador}x frente a su base, pero NO hay temblores a menos de 200 km en 96h; "
             "no equivale a un enjambre local activo."
+        )
+    elif multiplicador >= 1.5 and loc200_con == 0 and loc500_con == 0:
+        estado = "🟡 AVISO POR MODELO (Sin sismos cercanos ni regionales)"
+        resumen_simple = (
+            f"El modelo marca {multiplicador}x frente a su base, pero no hubo sismos a menos de 500 km en 96h; "
+            "es una variación estadística, no actividad local."
         )
     elif multiplicador >= 1.5 or (loc200_con >= 2 or prof70_150 >= 2):
         if loc200_con == 0 and prof70_150 > 0:
@@ -149,6 +156,42 @@ def describir_nivel_usuario(
         resumen_simple = "La situación se mantiene dentro del comportamiento normal de la zona."
 
     return estado, frec_txt, resumen_simple
+
+
+def _plural(n: int, singular: str, plural: str) -> str:
+    return f"{n} {singular if n == 1 else plural}"
+
+
+def construir_mensaje_alerta(zona, estado_txt, resumen_simple, frec_txt, info, umbral,
+                             cercanos, m45_plus, regionales) -> str:
+    prob = info["probabilidad_m65_7d"] * 100
+    habitual = info["tasa_historica_7d"] * 100
+    mult = info["multiplicador_riesgo"]
+    if mult >= 1.1:
+        comparacion = f"<b>{mult}x</b> más de lo normal"
+    elif mult <= 0.9:
+        comparacion = f"<b>{mult}x</b>, por debajo de lo normal"
+    else:
+        comparacion = f"<b>{mult}x</b>, igual que lo normal"
+    if cercanos == 0:
+        cerca_txt = "ningún temblor a menos de 200 km"
+    else:
+        cerca_txt = f"{_plural(cercanos, 'temblor cercano', 'temblores cercanos')} (a menos de 200 km"
+        cerca_txt += f", {_plural(m45_plus, 'fuerte', 'fuertes')} de M4.5+)" if m45_plus else ")"
+    region_txt = (
+        "ninguno en la región (500 km)" if regionales == 0
+        else f"{_plural(regionales, 'temblor', 'temblores')} en la región (a menos de 500 km)"
+    )
+    return (
+        f"📍 <b>{zona}</b>\n"
+        f"{estado_txt}\n"
+        f"💬 <i>{resumen_simple}</i>\n\n"
+        f"⚠️ <b>Probabilidad de un terremoto fuerte (M6.5+) en los próximos 7 días:</b> {prob:.2f}%\n"
+        f"• Lo normal aquí: {habitual:.2f}% ({frec_txt})\n"
+        f"• Hoy: {comparacion}\n\n"
+        f"🔎 <b>Últimas 96 horas:</b> {cerca_txt}; {region_txt}.\n"
+        f"🎯 <i>Tu alerta: avisar si el riesgo llega a {umbral}x o más.</i>"
+    )
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -271,26 +314,21 @@ def ejecutar_vigilancia(key: str = Query(default="")):
                 info["tasa_historica_7d"],
                 cercanos,
                 profundos,
+                regionales,
             )
 
-            txt_cercanos = f"{cercanos} {'sismo' if cercanos == 1 else 'sismos'} cercanos (&lt;200 km, {m45_plus} de M4.5+)"
-            txt_regionales = f"{regionales} {'regional' if regionales == 1 else 'regionales'} (&lt;500 km)"
-
-            notificaciones.append(
-                f"📍 <b>Zona:</b> {zona}\n"
-                f"🚦 <b>Estado:</b> {estado_txt}\n"
-                f"⚠️ <b>Probabilidad M6.5+ (7 días):</b> {info['probabilidad_m65_7d']*100:.2f}% "
-                f"(habitual: {info['tasa_historica_7d']*100:.2f}%, {frec_txt})\n"
-                f"📈 <b>Multiplicador:</b> <b>{info['multiplicador_riesgo']}x</b> (umbral: {umbral}x)\n"
-                f"📊 <b>Últimas 96h:</b> {txt_cercanos} · {txt_regionales}\n"
-                f"💬 <i>{resumen_simple}</i>"
-            )
+            notificaciones.append(construir_mensaje_alerta(
+                zona, estado_txt, resumen_simple, frec_txt, info, umbral,
+                cercanos, m45_plus, regionales,
+            ))
 
     alerta_enviada = False
     if notificaciones:
         cabecera = (
-            "🚨 <b>REPORTE DE VIGILANCIA SÍSMICA (USGS + ML)</b>\n"
-            "<i>Un sismo M6.5+ es un sismo fuerte; el multiplicador compara la estimación actual con la tasa base de la zona.</i>\n\n"
+            "🚨 <b>Alerta sísmica</b>\n"
+            "<i>Estimación estadística (datos USGS + modelo). No predice cuándo ocurrirá un terremoto: "
+            "indica si el riesgo de esta semana está por encima o por debajo de lo normal en tu zona. "
+            "M6.5+ = terremoto fuerte; \"1x\" = riesgo normal, \"2x\" = el doble.</i>\n\n"
         )
         pie = "\n\n🌐 Panel web: https://ultimo-modulo.vercel.app"
 
@@ -390,7 +428,8 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         base_val = pred["tasa_historica_7d"]
         mult = pred["multiplicador_riesgo"]
         estado_txt, frec_txt, _ = describir_nivel_usuario(
-            mult, prob_7d=prob_val, tasa_base=base_val, loc200_con=loc200_con, prof70_150=prof70_150
+            mult, prob_7d=prob_val, tasa_base=base_val, loc200_con=loc200_con, prof70_150=prof70_150,
+            loc500_con=loc500_con,
         )
 
         evaluaciones.append((

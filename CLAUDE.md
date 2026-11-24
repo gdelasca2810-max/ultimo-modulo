@@ -6,6 +6,8 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 - Repo: https://github.com/gdelasca2810-max/ultimo-modulo (privado, rama `main`).
 - Deploy frontend: Vercel (`vercel.json`, publica `public/`). Detalle en `docs/deploy/vercel.md`.
 - Deploy backend: Render vía Blueprint `render.yaml` (estático, `public/`, autodeploy). URL: https://ultimo-modulo.onrender.com. Detalle en `docs/deploy/render.md`.
+- Backend real: `api/main.py` (FastAPI + `modelo_sismos.joblib`), `/vigilar?key=CRON_SECRET` → Supabase + Telegram. Frontend en Vercel: https://ultimo-modulo.vercel.app.
+- No commitear `.github/workflows/vigilancia_sismica.yml` (GitHub rechaza el push).
 <!-- Rellenar: qué es el proyecto, stack, comandos esenciales. -->
 
 ## Mapa de documentos (leer bajo demanda con `@`)
@@ -13,6 +15,8 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 |---|---|
 | Reglas de memoria y documentación | `docs/claude/memoria.md` |
 | Uso de modelos y agentes | `docs/claude/modelos.md` |
+| Arquitectura, usuarios, RAG | `docs/arquitectura.md` |
+| Pendientes | `docs/todo.md` |
 | Despliegue en Vercel | `docs/deploy/vercel.md` |
 | Despliegue en Render | `docs/deploy/render.md` |
 | Historia de sesiones | `CLAUDE_HISTORY.md` |
