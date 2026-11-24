@@ -109,6 +109,16 @@ def calcular_prediccion(datos: ConsultaRiesgo):
     }
 
 
+def formatear_frecuencia_habitual(tasa_base: float) -> str:
+    if tasa_base <= 0:
+        return "frecuencia histórica muy baja en el historial"
+    semanas = round(1.0 / tasa_base)
+    if semanas >= 104:
+        anios = round(semanas / 52.0, 1)
+        return f"~1 cada {anios} años"
+    return f"~1 cada {semanas} semanas"
+
+
 def describir_nivel_usuario(
     multiplicador: float,
     prob_7d: float,
@@ -116,18 +126,29 @@ def describir_nivel_usuario(
     loc200_con: int,
     prof70_150: int,
 ):
+    frec_txt = formatear_frecuencia_habitual(tasa_base)
+
     if multiplicador >= 2.0 and prob_7d >= 0.025 and loc200_con >= 3:
         estado = "🔴 ELEVADO (Enjambre sísmico local activo)"
-    elif multiplicador >= 1.5 and (loc200_con >= 2 or prof70_150 >= 2):
+        resumen_simple = "Hay actividad local relevante y la estimación a 7 días está por encima de lo habitual."
+    elif multiplicador >= 2.0 and loc200_con == 0:
+        estado = "🟡 AVISO POR MODELO (Sin sismos cercanos <200 km)"
+        resumen_simple = (
+            f"El modelo marca {multiplicador}x frente a su base, pero NO hay temblores a menos de 200 km en 96h; "
+            "no equivale a un enjambre local activo."
+        )
+    elif multiplicador >= 1.5 or (loc200_con >= 2 or prof70_150 >= 2):
         if loc200_con == 0 and prof70_150 > 0:
-            estado = "🟡 MODERADO (Solo actividad profunda en observación, sin sismos cercanos)"
+            estado = "🟡 MODERADO (Solo actividad profunda en observación)"
+            resumen_simple = "Solo se observan sismos a profundidad intermedia, sin temblores cercanos en superficie."
         else:
-            estado = "🟡 MODERADO (Repunte sísmico leve en observación)"
+            estado = "🟡 MODERADO (Actividad en observación)"
+            resumen_simple = "Se registra actividad reciente a vigilar, aunque la probabilidad semanal sigue moderada."
     else:
-        estado = "🟢 NORMAL (Sin actividad inusual)"
+        estado = "🟢 NORMAL (Dentro de lo habitual)"
+        resumen_simple = "La situación se mantiene dentro del comportamiento normal de la zona."
 
-    semanas_equiv = round(1.0 / tasa_base) if tasa_base > 0 else 52
-    return estado, semanas_equiv
+    return estado, frec_txt, resumen_simple
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -239,27 +260,37 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         info = resultados_zona.get(zona)
         det = detalles_zona.get(zona, {})
         if info and info["multiplicador_riesgo"] >= umbral:
-            estado_txt, semanas_eq = describir_nivel_usuario(
+            cercanos = det.get("loc200_con", 0)
+            m45_plus = det.get("loc200_m45plus", 0)
+            regionales = det.get("loc500_con", 0)
+            profundos = det.get("prof70_150", 0)
+
+            estado_txt, frec_txt, resumen_simple = describir_nivel_usuario(
                 info["multiplicador_riesgo"],
                 info["probabilidad_m65_7d"],
                 info["tasa_historica_7d"],
-                det.get("loc200_con", 0),
-                det.get("prof70_150", 0),
+                cercanos,
+                profundos,
             )
+
+            txt_cercanos = f"{cercanos} {'sismo' if cercanos == 1 else 'sismos'} cercanos (<200 km, {m45_plus} de M4.5+)"
+            txt_regionales = f"{regionales} {'regional' if regionales == 1 else 'regionales'} (<500 km)"
+
             notificaciones.append(
                 f"📍 <b>Zona:</b> {zona}\n"
-                f"🚦 <b>Estado actual:</b> {estado_txt}\n"
-                f"⚠️ <b>Probabilidad sismo fuerte (M6.5+ en 7 días):</b> {info['probabilidad_m65_7d']*100:.2f}% "
-                f"(habitual: {info['tasa_historica_7d']*100:.2f}%, ~1 cada {semanas_eq} semanas)\n"
-                f"📈 <b>Nivel respecto a lo normal:</b> <b>{info['multiplicador_riesgo']}x</b> (tu alerta: {umbral}x)\n"
-                f"📊 <b>Actividad detectada (96h):</b> {det.get('loc200_con', 0)} sismos cercanos "
-                f"({det.get('loc200_m45plus', 0)} de M4.5+), {det.get('loc500_con', 0)} regionales (&lt;500km)"
+                f"🚦 <b>Estado:</b> {estado_txt}\n"
+                f"⚠️ <b>Probabilidad M6.5+ (7 días):</b> {info['probabilidad_m65_7d']*100:.2f}% "
+                f"(habitual: {info['tasa_historica_7d']*100:.2f}%, {frec_txt})\n"
+                f"📈 <b>Multiplicador:</b> <b>{info['multiplicador_riesgo']}x</b> (umbral: {umbral}x)\n"
+                f"📊 <b>Últimas 96h:</b> {txt_cercanos} · {txt_regionales}\n"
+                f"💬 <i>{resumen_simple}</i>"
             )
 
     alerta_enviada = False
     if notificaciones:
         mensaje = (
-            "🚨 <b>ALERTA SÍSMICA AUTOMÁTICA (USGS + ML)</b>\n\n"
+            "🚨 <b>REPORTE DE VIGILANCIA SÍSMICA (USGS + ML)</b>\n"
+            "<i>Nota: Un sismo M6.5+ es un sismo fuerte; el multiplicador compara la estimación actual con la tasa base de la zona.</i>\n\n"
             + "\n\n".join(notificaciones)
             + "\n\n🌐 Panel web: https://ultimo-modulo.vercel.app"
         )
@@ -334,14 +365,14 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         prob_val = pred["probabilidad_m65_7d"]
         base_val = pred["tasa_historica_7d"]
         mult = pred["multiplicador_riesgo"]
-        estado_txt, semanas_eq = describir_nivel_usuario(
-            mult, prob_val, base_val, loc200_con, prof70_150
+        estado_txt, frec_txt, _ = describir_nivel_usuario(
+            mult, prob_7d=prob_val, tasa_base=base_val, loc200_con=loc200_con, prof70_150=prof70_150
         )
 
         evaluaciones.append((
             prob_val,
             f"- {nombre}: estado={estado_txt}, prob_7d={prob_val*100:.2f}%, "
-            f"habitual_7d={base_val*100:.2f}% (~1 sismo fuerte cada {semanas_eq} semanas en condiciones normales), "
+            f"habitual_7d={base_val*100:.2f}% ({frec_txt}), "
             f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} moderados M4.5+ y {loc200_sin45} leves <M4.5), "
             f"sismos_regionales_500km={loc500_con}, sismos_profundos_70_150km={prof70_150}"
         ))
