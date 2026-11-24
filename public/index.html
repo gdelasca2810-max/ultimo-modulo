@@ -142,6 +142,98 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
   .hero { padding-bottom: 96px; }
 }
 @media (prefers-reduced-motion: reduce) { .brand-dot { animation: none; } html { scroll-behavior: auto; } }
+/* ===== v3: layout, animaciones y componentes nuevos ===== */
+.hero { position: relative; overflow: hidden; }
+.hero::before, .hero::after { content: ""; position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5; pointer-events: none; animation: drift 16s ease-in-out infinite alternate; }
+.hero::before { width: 420px; height: 420px; background: #3b5bdb; left: -120px; top: -80px; }
+.hero::after { width: 360px; height: 360px; background: #d6336c; right: -80px; bottom: 20px; opacity: .28; animation-duration: 20s; }
+@keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(60px,40px) scale(1.15); } }
+.hero .wrap { position: relative; z-index: 1; }
+.hero-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(300px,420px); gap: 36px; align-items: center; margin-top: 28px; }
+.hero-grid .hero-text { margin: 0; }
+.account { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(14px); border-radius: 20px; padding: 22px; box-shadow: 0 20px 50px rgba(2,6,16,.35); color: #eaf0fb; }
+.account h2 { font-size: 1.15rem; letter-spacing: -.01em; }
+.account .hint { color: #b4c2dc; font-size: .86rem; margin-top: 2px; }
+.account .field label { color: #b4c2dc; }
+.account input { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.2); color: #fff; }
+.account input::placeholder { color: #8fa2c4; }
+.account .msg { color: #ffd38a; }
+.account .btn.secondary { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.22); }
+.account.flash { animation: flash 1.1s ease; }
+@keyframes flash { 0%,100% { box-shadow: 0 20px 50px rgba(2,6,16,.35); } 40% { box-shadow: 0 0 0 4px #ffb020, 0 20px 50px rgba(2,6,16,.35); } }
+.me { display: flex; align-items: center; gap: 12px; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 750; font-size: 1.1rem; background: linear-gradient(135deg,#ff6b4a,#d6336c); color: #fff; flex: none; }
+.me b { display: block; font-size: .95rem; word-break: break-all; }
+.me small { color: #9fb3d8; }
+.account .tg-box { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16); color: #eaf0fb; margin-top: 14px; }
+.account .tg-box a { color: #8ec5ff; font-weight: 600; }
+
+.btn { transition: transform .15s ease, filter .15s ease, box-shadow .15s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(42,120,214,.35); }
+.btn:active { transform: translateY(0) scale(.98); }
+
+/* Alertas: bloque protagonista */
+.alerts-hero { position: relative; overflow: hidden; margin-top: 18px; border-radius: 22px; padding: 26px; color: #fff;
+  background: linear-gradient(120deg, #5b2fd6 0%, #2a5bd6 50%, #0fa3a3 100%); background-size: 200% 200%; animation: gradmove 12s ease infinite;
+  box-shadow: 0 22px 50px rgba(60,50,200,.35); border: 1px solid rgba(255,255,255,.25); }
+@keyframes gradmove { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+.alerts-hero::after { content: "🔔"; position: absolute; right: 18px; top: -10px; font-size: 7rem; opacity: .12; transform: rotate(14deg); pointer-events: none; }
+.alerts-hero h2 { font-size: 1.5rem; letter-spacing: -.02em; }
+.alerts-hero .lead2 { color: #e4e9ff; font-size: .95rem; margin-top: 2px; max-width: 640px; }
+.alerts-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.1fr); gap: 20px; margin-top: 18px; }
+.alerts-form, .alerts-list { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); border-radius: 16px; padding: 16px; backdrop-filter: blur(8px); }
+.alerts-form .stack { margin-top: 0; }
+.alerts-hero .field label { color: #e4e9ff; }
+.alerts-hero select, .alerts-hero input { background: rgba(255,255,255,.95); color: #0f172a; border-color: transparent; }
+.alerts-hero .btn { background: #fff; color: #3a2bb5; }
+.alerts-hero .btn:hover { box-shadow: 0 8px 22px rgba(0,0,0,.25); }
+.alerts-hero .btn.secondary { background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.35); }
+.alerts-hero .msg { color: #fff3c4; }
+.alerts-hero .alert-item { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.3); color: #fff; animation: pop .35s ease both; }
+.alerts-hero .sub-data { color: #d7defc; }
+.alerts-hero .empty { color: #e4e9ff; font-size: .9rem; }
+@keyframes pop { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Tabla: ordenar y paginar */
+.th-btn { all: unset; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; }
+.th-btn:hover { color: var(--accent); }
+.th-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.th-btn .arr { font-size: .7rem; opacity: .35; transition: transform .2s ease, opacity .2s ease; }
+th[aria-sort] .arr { opacity: 1; color: var(--accent); }
+th[aria-sort="descending"] .arr { transform: rotate(180deg); }
+.row-in { animation: rowin .4s ease both; }
+@keyframes rowin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.pager { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; font-size: .86rem; color: var(--muted); }
+.pager-btns { display: flex; gap: 6px; }
+.pg-btn { min-width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; font-weight: 600; transition: transform .15s ease, background .15s ease; }
+.pg-btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--accent); }
+.pg-btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pg-btn:disabled { opacity: .4; cursor: default; }
+
+/* Marcadores del mapa con pulso */
+.zm { display: block; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; position: relative; box-shadow: 0 0 0 0 rgba(255,176,32,.6); }
+.zm.ok { background: #2fd07b; }
+.zm.act { background: #ffb020; animation: ring 2s ease-out infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(255,176,32,.65); } 100% { box-shadow: 0 0 0 16px rgba(255,176,32,0); } }
+
+/* Entradas */
+.rise { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; animation-delay: var(--d, 0s); }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.js .reveal { opacity: 0; transform: translateY(20px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.7,.2,1); transition-delay: var(--d, 0s); }
+.js .reveal.in { opacity: 1; transform: none; }
+.kpi { transition: transform .2s ease, box-shadow .2s ease; }
+.kpi:hover { transform: translateY(-3px); }
+.step { transition: transform .2s ease, box-shadow .2s ease; }
+.step:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+
+@media (max-width: 980px) {
+  .hero-grid { grid-template-columns: 1fr; }
+  .alerts-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .js .reveal { opacity: 1; transform: none; }
+}
 </style>
 </head>
 <body>
@@ -155,19 +247,50 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
         <button class="icon-btn" onclick="alternarTema()" aria-label="Cambiar tema claro/oscuro">◐ Tema</button>
       </div>
     </div>
-    <div class="hero-text">
-      <h1>¿Qué zonas del mundo están hoy <em>más activas de lo habitual</em>?</h1>
-      <p class="lead">Leemos cada hora los sismos reales del USGS y un modelo de IA compara cada región con su comportamiento histórico. Te avisamos por Telegram, en lenguaje claro. No predice terremotos: mide riesgo relativo.</p>
-      <div class="cta-row">
-        <a class="btn" href="#alertas">🔔 Activar mis alertas</a>
-        <a class="btn ghost" id="cta-bot" href="#alertas">💬 Preguntar al bot de Telegram</a>
+    <div class="hero-grid">
+      <div class="hero-text rise">
+        <h1>¿Qué zonas del mundo están hoy <em>más activas de lo habitual</em>?</h1>
+        <p class="lead">Leemos cada hora los sismos reales del USGS y un modelo de IA compara cada región con su comportamiento histórico. Te avisamos por Telegram, en lenguaje claro. No predice terremotos: mide riesgo relativo.</p>
+        <div class="cta-row">
+          <a class="btn" href="#alertas" onclick="irAAlertas(event)">🔔 Activar mis alertas</a>
+          <a class="btn ghost" id="cta-bot" href="#" target="_blank" rel="noopener" style="display:none;">💬 Preguntar al bot de Telegram</a>
+        </div>
+      </div>
+
+      <div class="account rise" id="cuenta" style="--d:.15s">
+        <div id="login-box">
+          <h2>Tu cuenta</h2>
+          <p class="hint">Entra o crea una cuenta gratis para recibir avisos en tu Telegram.</p>
+          <div class="stack">
+            <div class="field"><label for="email">Correo electrónico</label><input type="email" id="email" placeholder="tu@email.com" autocomplete="email"></div>
+            <div class="field"><label for="password">Contraseña (mín. 6 caracteres)</label><input type="password" id="password" placeholder="••••••" autocomplete="current-password"></div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" style="flex:1; justify-content:center;" onclick="iniciarSesion()">Entrar</button>
+              <button class="btn secondary" style="flex:1; justify-content:center;" onclick="registrarse()">Crear cuenta</button>
+            </div>
+            <p id="auth-msg" class="msg"></p>
+          </div>
+        </div>
+
+        <div id="user-panel" style="display:none;">
+          <div class="me">
+            <div class="avatar" id="avatar">?</div>
+            <div style="flex:1; min-width:0;"><b id="me-email">—</b><small>Sesión iniciada</small></div>
+            <button class="btn secondary sm" onclick="cerrarSesion()">Salir</button>
+          </div>
+          <div class="tg-box" id="bloque-telegram">
+            <span id="tg-estado">📱 Telegram: comprobando…</span>
+            <button class="btn sm" id="btn-tg" style="justify-self:start;" onclick="vincularTelegram()">Vincular Telegram</button>
+            <a id="tg-link" href="#" target="_blank" rel="noopener" style="display:none;">Abrir el bot y pulsar «Iniciar» →</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
 <main class="wrap">
-  <div class="map-card">
+    <div class="map-card">
     <div id="map" aria-label="Mapa mundial de sismos recientes y zonas monitoreadas"></div>
     <span class="map-note" id="map-note">Cargando sismos…</span>
     <div class="map-legend">
@@ -184,52 +307,11 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
     <div class="kpi"><div class="kpi-label">Sismos M4.5+ en 7 días</div><div class="kpi-value" id="kpi-quakes">—</div><div class="kpi-sub" id="kpi-max">En todo el mundo (USGS)</div></div>
   </section>
 
-  <div class="main-grid">
-    <section class="card" id="zonas">
-      <h2>Regiones vigiladas</h2>
-      <p class="hint">Toca una fila para verla en el mapa. «Riesgo habitual» es la probabilidad normal de un sismo fuerte (M6.5+) en una semana cualquiera.</p>
-      <div class="table-toolbar">
-        <div class="field" style="flex:1; min-width:200px; max-width:320px;">
-          <input type="text" id="buscador-zona" placeholder="Buscar región (Chile, Japón, México…)" oninput="filtrarTabla()" aria-label="Buscar región">
-        </div>
-        <label class="check"><input type="checkbox" id="solo-activas" onchange="filtrarTabla()"> Solo con señal activa</label>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Región</th>
-              <th>Riesgo habitual M6.5+ / 7 días</th>
-              <th>Cercanos &lt;200 km (96 h)</th>
-              <th>Profundos 70–150 km</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody id="zonas-body"><tr><td colspan="5">Cargando datos en tiempo real…</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-
-    <aside class="side" id="alertas">
-      <div class="card" id="login-box">
-        <h2>🔔 Alertas en Telegram</h2>
-        <p class="hint">Crea una cuenta gratuita, elige tus regiones y recibe un aviso claro cuando el riesgo suba.</p>
-        <div class="stack">
-          <div class="field"><label for="email">Correo electrónico</label><input type="email" id="email" placeholder="tu@email.com" autocomplete="email"></div>
-          <div class="field"><label for="password">Contraseña (mín. 6 caracteres)</label><input type="password" id="password" placeholder="••••••" autocomplete="current-password"></div>
-          <div style="display:flex; gap:8px;">
-            <button class="btn" style="flex:1; justify-content:center;" onclick="iniciarSesion()">Entrar</button>
-            <button class="btn secondary" style="flex:1; justify-content:center;" onclick="registrarse()">Crear cuenta</button>
-          </div>
-          <p id="auth-msg" class="msg"></p>
-        </div>
-      </div>
-
-      <div class="card" id="user-panel" style="display:none;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-          <div><h2>🔔 Mis alertas</h2><p class="hint">Recibirás un aviso en Telegram cuando una región alcance tu sensibilidad.</p></div>
-          <button class="btn secondary sm" onclick="cerrarSesion()">Salir</button>
-        </div>
+  <section class="alerts-hero" id="alertas" style="display:none;">
+    <h2>🔔 Mis alertas</h2>
+    <p class="lead2">Elige una región y qué tan sensible quieres ser. Cuando el riesgo la alcance, recibirás un aviso claro en tu Telegram.</p>
+    <div class="alerts-grid">
+      <div class="alerts-form">
         <div class="stack">
           <div class="field"><label for="select-zona">1. Región a vigilar</label><select id="select-zona"></select></div>
           <div class="field">
@@ -246,16 +328,39 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
           </div>
           <button class="btn" style="justify-content:center;" onclick="guardarAlerta()">+ Activar alerta</button>
           <p id="alerta-msg" class="msg"></p>
-          <ul id="mis-alertas" style="list-style:none; display:grid; gap:8px;"></ul>
-          <div class="tg-box" id="bloque-telegram">
-            <span id="tg-estado">📱 Telegram: comprobando…</span>
-            <button class="btn sm" id="btn-tg" style="justify-self:start;" onclick="vincularTelegram()">Vincular Telegram</button>
-            <a id="tg-link" href="#" target="_blank" rel="noopener" style="display:none;">Abrir el bot y pulsar «Iniciar»</a>
-          </div>
         </div>
       </div>
-    </aside>
-  </div>
+      <div class="alerts-list">
+        <ul id="mis-alertas" style="list-style:none; display:grid; gap:8px;"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="card reveal" id="zonas" style="margin-top:18px;">
+    <h2>Regiones vigiladas</h2>
+    <p class="hint">Toca una fila para verla en el mapa y los encabezados para ordenar. «Riesgo habitual» es la probabilidad normal de un sismo fuerte (M6.5+) en una semana cualquiera.</p>
+    <div class="table-toolbar">
+      <div class="field" style="flex:1; min-width:200px; max-width:320px;">
+        <input type="text" id="buscador-zona" placeholder="Buscar región (Chile, Japón, México…)" oninput="filtrarTabla()" aria-label="Buscar región">
+      </div>
+      <label class="check"><input type="checkbox" id="solo-activas" onchange="filtrarTabla()"> Solo con señal activa</label>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-k="zona"><button class="th-btn" onclick="ordenarPor('zona')">Región <span class="arr">▲</span></button></th>
+            <th data-k="tasa"><button class="th-btn" onclick="ordenarPor('tasa')">Riesgo habitual M6.5+ / 7 días <span class="arr">▲</span></button></th>
+            <th data-k="cercanos"><button class="th-btn" onclick="ordenarPor('cercanos')">Cercanos &lt;200 km (96 h) <span class="arr">▲</span></button></th>
+            <th data-k="profundos"><button class="th-btn" onclick="ordenarPor('profundos')">Profundos 70–150 km <span class="arr">▲</span></button></th>
+            <th data-k="estado"><button class="th-btn" onclick="ordenarPor('estado')">Estado <span class="arr">▲</span></button></th>
+          </tr>
+        </thead>
+        <tbody id="zonas-body"><tr><td colspan="5">Cargando datos en tiempo real…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pager" id="pager"></div>
+  </section>
 
   <section class="steps" aria-label="Cómo funciona">
     <div class="step"><b class="n">1</b><h3>Datos reales en vivo</h3><p>Cada hora leemos los sismos de las últimas 96 horas alrededor de cada región tectónica (fuente: USGS).</p></div>
@@ -320,7 +425,7 @@ async function cargarSismosRecientes() {
         .addTo(quakeLayer);
     });
     const mayor = ev[ev.length - 1];
-    document.getElementById('kpi-quakes').textContent = ev.length;
+    animarNumero('kpi-quakes', ev.length);
     if (mayor) document.getElementById('kpi-max').textContent = `Mayor: M${mayor.properties.mag.toFixed(1)} · ${mayor.properties.place}`;
     nota.textContent = `${ev.length} sismos M4.5+ en 7 días`;
   } catch (e) {
@@ -334,8 +439,9 @@ function pintarZonasEnMapa() {
   zonasCache.forEach(z => {
     if (z.lat_centro == null || z.lon_centro == null) return;
     const act = esActiva(z);
-    L.circleMarker([z.lat_centro, z.lon_centro], { radius: 9, color: '#ffffff', weight: 2, fillColor: act ? '#ffb020' : '#2fd07b', fillOpacity: .95 })
-      .bindTooltip(`${act ? '⚠' : '✓'} ${esc(z.zona)}`, { direction: 'top' })
+    const icon = L.divIcon({ className: '', html: `<span class="zm ${act ? 'act' : 'ok'}"></span>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+    L.marker([z.lat_centro, z.lon_centro], { icon })
+      .bindTooltip(`${act ? '⚠' : '✓'} ${esc(z.zona)}`, { direction: 'top', offset: [0, -8] })
       .bindPopup(`<b>${esc(z.zona)}</b><br>${act ? '⚠ Señal local activa' : '✓ Actividad normal'}<br><small>Cercanos &lt;200 km: ${z.loc200_n96_con || 0} · Profundos: ${z.lat_n96_prof70_150 || 0}</small>`)
       .addTo(zonaLayer);
   });
@@ -348,15 +454,46 @@ function irAZona(nombre) {
   document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-/* ---------- Tabla ---------- */
-function renderizarTabla(lista) {
+/* ---------- Tabla (orden + paginación) ---------- */
+const PAGE_SIZE = 5;
+let orden = { key: 'zona', dir: 1 };
+let pagina = 1;
+let listaFiltrada = [];
+const valorOrden = {
+  zona: z => z.zona.toLowerCase(),
+  tasa: z => Number(z.tasa_historica_m65_7d || 0),
+  cercanos: z => Number(z.loc200_n96_con || 0),
+  profundos: z => Number(z.lat_n96_prof70_150 || 0),
+  estado: z => (esActiva(z) ? 1 : 0),
+};
+
+function ordenarPor(k) {
+  if (orden.key === k) orden.dir *= -1;
+  else { orden.key = k; orden.dir = k === 'zona' ? 1 : -1; }
+  pagina = 1;
+  filtrarTabla(false);
+}
+
+function irPagina(p) {
+  const total = Math.max(1, Math.ceil(listaFiltrada.length / PAGE_SIZE));
+  pagina = Math.min(Math.max(1, p), total);
+  renderizarTabla();
+}
+
+function renderizarTabla() {
   const tbody = document.getElementById('zonas-body');
-  if (!lista.length) {
+  document.querySelectorAll('th[data-k]').forEach(th => {
+    if (th.dataset.k === orden.key) th.setAttribute('aria-sort', orden.dir === 1 ? 'ascending' : 'descending');
+    else th.removeAttribute('aria-sort');
+  });
+  if (!listaFiltrada.length) {
     tbody.innerHTML = '<tr><td colspan="5" style="color: var(--muted);">Ninguna región coincide con el filtro.</td></tr>';
+    document.getElementById('pager').innerHTML = '';
     return;
   }
   const maxTasa = Math.max(...zonasCache.map(z => Number(z.tasa_historica_m65_7d || 0)), 0.0001);
-  tbody.innerHTML = lista.map(z => {
+  const ini = (pagina - 1) * PAGE_SIZE;
+  tbody.innerHTML = listaFiltrada.slice(ini, ini + PAGE_SIZE).map((z, i) => {
     const tasa = Number(z.tasa_historica_m65_7d || 0);
     const pct = (tasa * 100).toFixed(2);
     const semanasEq = tasa > 0 ? Math.round(1 / tasa) : 52;
@@ -366,7 +503,7 @@ function renderizarTabla(lista) {
     const prof = Number(z.lat_n96_prof70_150 || 0);
     const act = esActiva(z);
     return `
-      <tr onclick="irAZona('${esc(z.zona).replace(/'/g, '&#39;')}')">
+      <tr class="row-in" style="animation-delay:${i * 60}ms" onclick="irAZona('${esc(z.zona).replace(/'/g, '&#39;')}')">
         <td class="zone-name">${esc(z.zona)}</td>
         <td><b>${pct}%</b><span class="sub-data">~1 sismo fuerte cada ${semanasEq} sem.</span>
           <div class="pbar" aria-hidden="true"><i style="width:${Math.max(4, (tasa / maxTasa) * 100)}%"></i></div></td>
@@ -377,12 +514,37 @@ function renderizarTabla(lista) {
           : '<span class="pill ok">✓ Actividad normal</span><span class="sub-data">Sin repunte reciente</span>'}</td>
       </tr>`;
   }).join('');
+
+  const total = Math.ceil(listaFiltrada.length / PAGE_SIZE);
+  const fin = Math.min(ini + PAGE_SIZE, listaFiltrada.length);
+  let botones = `<button class="pg-btn" onclick="irPagina(${pagina - 1})" ${pagina === 1 ? 'disabled' : ''} aria-label="Página anterior">‹</button>`;
+  for (let p = 1; p <= total; p++) botones += `<button class="pg-btn ${p === pagina ? 'on' : ''}" onclick="irPagina(${p})" aria-label="Página ${p}">${p}</button>`;
+  botones += `<button class="pg-btn" onclick="irPagina(${pagina + 1})" ${pagina === total ? 'disabled' : ''} aria-label="Página siguiente">›</button>`;
+  document.getElementById('pager').innerHTML = `<span>Mostrando ${ini + 1}–${fin} de ${listaFiltrada.length} regiones</span><div class="pager-btns">${botones}</div>`;
 }
 
-function filtrarTabla() {
+function filtrarTabla(reset = true) {
+  if (reset) pagina = 1;
   const texto = (document.getElementById('buscador-zona').value || '').toLowerCase().trim();
   const soloActivas = document.getElementById('solo-activas').checked;
-  renderizarTabla(zonasCache.filter(z => z.zona.toLowerCase().includes(texto) && (!soloActivas || esActiva(z))));
+  const f = valorOrden[orden.key];
+  listaFiltrada = zonasCache
+    .filter(z => z.zona.toLowerCase().includes(texto) && (!soloActivas || esActiva(z)))
+    .sort((a, b) => (f(a) > f(b) ? 1 : f(a) < f(b) ? -1 : a.zona.localeCompare(b.zona)) * orden.dir);
+  renderizarTabla();
+}
+
+function animarNumero(id, destino, ms = 900) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || destino === 0) { el.textContent = destino; return; }
+  const t0 = performance.now();
+  const paso = t => {
+    const k = Math.min(1, (t - t0) / ms);
+    el.textContent = Math.round(destino * (1 - Math.pow(1 - k, 3)));
+    if (k < 1) requestAnimationFrame(paso);
+  };
+  requestAnimationFrame(paso);
 }
 
 async function cargarZonas() {
@@ -394,26 +556,44 @@ async function cargarZonas() {
   zonasCache = data || [];
   document.getElementById('select-zona').innerHTML = zonasCache.map(z => `<option value="${esc(z.zona)}">${esc(z.zona)}</option>`).join('');
   const activas = zonasCache.filter(esActiva).length;
-  document.getElementById('kpi-total').textContent = zonasCache.length;
-  document.getElementById('kpi-activas').textContent = activas;
-  document.getElementById('kpi-normales').textContent = Math.max(0, zonasCache.length - activas);
+  animarNumero('kpi-total', zonasCache.length);
+  animarNumero('kpi-activas', activas);
+  animarNumero('kpi-normales', Math.max(0, zonasCache.length - activas));
   pintarZonasEnMapa();
   filtrarTabla();
 }
 
 /* ---------- Usuario ---------- */
+let usuarioActual = null;
+
 async function actualizarUIUsuario() {
   const { data: { user } } = await db.auth.getUser();
+  usuarioActual = user || null;
+  const ver = (id, on, tipo = 'block') => { document.getElementById(id).style.display = on ? tipo : 'none'; };
+  ver('login-box', !user);
+  ver('user-panel', !!user);
+  ver('alertas', !!user);
+  ver('cta-bot', !!user, 'inline-flex');
   if (user) {
-    document.getElementById('auth-status').textContent = `Conectado: ${user.email}`;
-    document.getElementById('login-box').style.display = 'none';
-    document.getElementById('user-panel').style.display = 'block';
+    document.getElementById('auth-status').textContent = 'Sesión iniciada';
+    document.getElementById('me-email').textContent = user.email;
+    document.getElementById('avatar').textContent = (user.email || '?')[0].toUpperCase();
     cargarMisAlertas();
     estadoTelegram();
   } else {
     document.getElementById('auth-status').textContent = 'Modo público';
-    document.getElementById('login-box').style.display = 'block';
-    document.getElementById('user-panel').style.display = 'none';
+  }
+}
+
+function irAAlertas(e) {
+  e.preventDefault();
+  if (usuarioActual) {
+    document.getElementById('alertas').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    const c = document.getElementById('cuenta');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+    setTimeout(() => document.getElementById('email').focus(), 450);
   }
 }
 
@@ -445,7 +625,7 @@ async function cargarMisAlertas() {
       <span>🔔 <b>${esc(a.zona)}</b><span class="sub-data">Avisar desde ${esc(a.umbral_multiplicador)}x</span></span>
       <button class="btn secondary sm" onclick="borrarAlerta('${esc(a.id)}')">Eliminar</button>
     </li>`
-  ).join('') || '<li class="hint" style="color:var(--muted); font-size:.86rem;">Aún no tienes alertas. Elige una región y pulsa «Activar alerta».</li>';
+  ).join('') || '<li class="empty">Aún no tienes alertas. Elige una región y pulsa «Activar alerta».</li>';
 }
 
 async function estadoTelegram() {
@@ -489,7 +669,7 @@ async function guardarAlerta() {
   }
   const { error } = await db.from('alertas_usuario').insert({ user_id: user.id, zona, umbral_multiplicador: umbral });
   if (error) { msgEl.textContent = 'Error al guardar alerta: ' + error.message; return; }
-  msgEl.style.color = 'var(--ok-ink)';
+  msgEl.style.color = '#d9ffe8';
   msgEl.textContent = `Alerta guardada: ${zona} en ${umbral}x.`;
   cargarMisAlertas();
 }
@@ -500,6 +680,10 @@ async function borrarAlerta(id) {
 }
 
 /* ---------- Arranque ---------- */
+document.documentElement.classList.add('js');
+document.querySelectorAll('.kpi, .step, details.card').forEach((el, i) => { el.classList.add('reveal'); el.style.setProperty('--d', (i % 4) * 0.08 + 's'); });
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .12 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 iniciarMapa();
 cargarZonas();
 actualizarUIUsuario();
