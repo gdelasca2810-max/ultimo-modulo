@@ -238,12 +238,7 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         umbral = float(a.get("umbral_multiplicador", 2.0))
         info = resultados_zona.get(zona)
         det = detalles_zona.get(zona, {})
-        if (
-            info
-            and info["multiplicador_riesgo"] >= umbral
-            and info["probabilidad_m65_7d"] >= 0.02
-            and det.get("loc200_con", 0) >= 2
-        ):
+        if info and info["multiplicador_riesgo"] >= umbral:
             estado_txt, semanas_eq = describir_nivel_usuario(
                 info["multiplicador_riesgo"],
                 info["probabilidad_m65_7d"],

@@ -6,6 +6,10 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
+## 2026-11-24 — Presentación
+- Fases técnicas dadas por terminadas (ML calibrado, API FastAPI en Render, Supabase, web en Vercel, MCP). Se creó el deck de 12 diapositivas (Artifact https://claude.ai/artifact/AEEfteDMUSCFABaJu7QxRB) con notas del orador.
+- Pendiente: completar `[Tu nombre]`, `[Fecha]`, métricas (ROC-AUC/PR-AUC/Brier desde `/health`) y zona de ejemplo; revisar el deck; ensayar la demo; decidir qué commitear (workflow, `.gitignore`, `.vscode/`, `AGENTS.MD`).
+
 ## 2026-11-23 — Subida a GitHub
 - Se inicializó git y se creó el repo privado gdelasca2810-max/ultimo-modulo; commit inicial con la estructura (CLAUDE.md, docs/, .claude/).
 - Pendiente: nada.

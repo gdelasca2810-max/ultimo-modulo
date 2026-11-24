@@ -217,13 +217,13 @@
     <section class="guide-grid">
       <div class="guide-step">
         <span class="step-num">Paso 1 · Datos en vivo</span>
-        <h3>Vigilancia de 20 regiones sísmicas</h3>
-        <p>El sistema lee automáticamente los temblores de las últimas <strong>96 horas</strong> alrededor de 20 zonas tectónicas clave del planeta.</p>
+        <h3>Vigilancia de 21 regiones sísmicas</h3>
+        <p>El sistema lee automáticamente los temblores de las últimas <strong>96 horas</strong> alrededor de las regiones tectónicas monitoreadas.</p>
       </div>
       <div class="guide-step">
         <span class="step-num">Paso 2 · Modelo Predictivo</span>
         <h3>Detección de enjambres (Multiplicador)</h3>
-        <p>Compara la actividad actual con 11 años de historial para calcular si el riesgo semanal de un sismo <strong>M6.5+</strong> se mantiene normal (<strong>1x</strong>) o se multiplica (<strong>2x o más</strong>).</p>
+        <p>Compara la actividad actual con el historial para calcular si el riesgo semanal de un sismo <strong>M6.5+</strong> se mantiene normal (<strong>1x</strong>) o se multiplica (<strong>2x o más</strong>).</p>
       </div>
       <div class="guide-step">
         <span class="step-num">Paso 3 · Alertas y Bot IA</span>
@@ -236,7 +236,7 @@
     <section class="kpi-grid">
       <div class="kpi">
         <div class="kpi-label">Regiones Monitoreadas</div>
-        <div class="kpi-value" id="kpi-total">20</div>
+        <div class="kpi-value" id="kpi-total">21</div>
         <div class="kpi-sub">Cinturón de Fuego y zonas activas</div>
       </div>
       <div class="kpi">
@@ -290,16 +290,29 @@
           <select id="select-zona"></select>
         </div>
         <div class="field" style="flex: 1; min-width: 240px;">
-          <label for="umbral">2. Sensibilidad del aviso (Multiplicador)</label>
-          <select id="umbral">
+          <label for="umbral">2. Sensibilidad del aviso (Multiplicador editable/seleccionable)</label>
+          <input
+            type="number"
+            id="umbral"
+            step="0.1"
+            min="0.1"
+            max="50"
+            value="0.5"
+            list="sugerencias-umbral"
+            placeholder="Escribe o elige (ej. 0.5, 1.3, 2.0)"
+          >
+          <datalist id="sugerencias-umbral">
+            <option value="0.5">0.5x — Umbral bajo / prueba</option>
+            <option value="1.0">1.0x — Nivel habitual</option>
             <option value="1.3">1.3x — Repunte leve (Muy sensible)</option>
             <option value="1.5">1.5x — Actividad moderada</option>
-            <option value="2.0" selected>2.0x — Enjambre activo (Recomendado)</option>
+            <option value="2.0">2.0x — Enjambre activo (Recomendado)</option>
             <option value="3.0">3.0x — Anomalía alta (Solo alertas críticas)</option>
-          </select>
+          </datalist>
         </div>
         <button onclick="guardarAlerta()">+ Activar alerta</button>
       </div>
+      <p id="alerta-msg" style="margin-bottom: 12px; font-size: 0.85rem; color: var(--warn);"></p>
 
       <ul id="mis-alertas" style="list-style: none; font-size: 0.9rem;"></ul>
     </div>
@@ -354,7 +367,7 @@
       <div class="glossary">
         <div class="glossary-item">
           <h4>Riesgo Habitual M6.5+ (7 días)</h4>
-          <p>Es la probabilidad normal de que ocurra un terremoto fuerte (magnitud 6.5 o superior) en esa región durante una semana cualquiera, según 11 años de registros históricos.</p>
+          <p>Es la probabilidad normal de que ocurra un terremoto fuerte (magnitud 6.5 o superior) en esa región durante una semana cualquiera, según registros históricos.</p>
         </div>
         <div class="glossary-item">
           <h4>Sismos Cercanos (&lt;200 km)</h4>
@@ -365,8 +378,8 @@
           <p>Temblores ocurridos a profundidad intermedia en zonas de subducción, un indicador relevante de tensión tectónica regional.</p>
         </div>
         <div class="glossary-item">
-          <h4>Multiplicador de Riesgo (1x, 2x, 3x)</h4>
-          <p><strong>1x</strong> indica actividad completamente normal. <strong>2x</strong> significa que la actividad reciente duplica la probabilidad semanal habitual de esa zona.</p>
+          <h4>Multiplicador de Riesgo (0.5x, 1x, 2x, 3x)</h4>
+          <p><strong>1x</strong> indica actividad igual a lo habitual. <strong>2x</strong> significa que la actividad reciente duplica la probabilidad semanal base de esa zona.</p>
         </div>
       </div>
     </div>
@@ -498,10 +511,30 @@
     }
 
     async function guardarAlerta() {
+      const msgEl = document.getElementById('alerta-msg');
+      msgEl.textContent = '';
       const { data: { user } } = await db.auth.getUser();
       const zona = document.getElementById('select-zona').value;
       const umbral = parseFloat(document.getElementById('umbral').value);
-      await db.from('alertas_usuario').insert({ user_id: user.id, zona, umbral_multiplicador: umbral });
+
+      if (!zona || Number.isNaN(umbral) || umbral <= 0) {
+        msgEl.textContent = 'Escribe o selecciona un multiplicador mayor que 0 (por ejemplo 0.5).';
+        return;
+      }
+
+      const { error } = await db.from('alertas_usuario').insert({
+        user_id: user.id,
+        zona,
+        umbral_multiplicador: umbral
+      });
+
+      if (error) {
+        msgEl.textContent = 'Error al guardar alerta: ' + error.message;
+        return;
+      }
+
+      msgEl.style.color = '#4ade80';
+      msgEl.textContent = `Alerta guardada: ${zona} en ${umbral}x.`;
       cargarMisAlertas();
     }
 

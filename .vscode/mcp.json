@@ -1,0 +1,14 @@
+﻿{
+    "servers":  {
+                    "riesgo-sismico":  {
+                                           "args":  [
+                                                        "C:\\UltimoModulo\\mcp\\server.py"
+                                                    ],
+                                           "env":  {
+                                                       "RENDER_API_URL":  "https://ultimo-modulo.onrender.com"
+                                                   },
+                                           "command":  "C:\\Users\\gianc\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+                                           "type":  "stdio"
+                                       }
+                }
+}
