@@ -500,11 +500,12 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         )
         respuesta = ""
         ultimo_error = ""
-        for modelo in (
+        modelos = [m.strip() for m in os.getenv("GEMINI_MODELS", "").split(",") if m.strip()] or [
             "gemini-flash-latest",
             "gemini-3.1-flash-lite-preview",
             "gemini-3-flash-preview",
-        ):
+        ]
+        for modelo in modelos:
             try:
                 r = requests.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={gemini_key}",
@@ -513,6 +514,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
                 )
             except requests.RequestException as e:
                 ultimo_error = f"{modelo}: {type(e).__name__}"
+                print(f"[gemini] {ultimo_error}", flush=True)
                 continue
             if r.ok:
                 respuesta = (
