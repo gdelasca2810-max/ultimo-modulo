@@ -217,6 +217,46 @@ def predecir(datos: ConsultaRiesgo):
     return calcular_prediccion(datos)
 
 
+def enviar_lotes_telegram(tg_token: str, chat_id: str, notificaciones: list) -> None:
+    cabecera = (
+        "🚨 <b>Alerta sísmica</b>\n"
+        "<i>Estimación estadística (datos USGS + modelo). No predice cuándo ocurrirá un terremoto: "
+        "indica si el riesgo de esta semana está por encima o por debajo de lo normal en tu zona. "
+        "M6.5+ = terremoto fuerte; \"1x\" = riesgo normal, \"2x\" = el doble.</i>\n\n"
+    )
+    pie = "\n\n🌐 Panel web: https://ultimo-modulo.vercel.app"
+
+    lotes = []
+    tam_lote = 4
+    for i in range(0, len(notificaciones), tam_lote):
+        bloque = "\n\n".join(notificaciones[i:i + tam_lote])
+        if i == 0:
+            bloque = cabecera + bloque
+        if i + tam_lote >= len(notificaciones):
+            bloque = bloque + pie
+        lotes.append(bloque)
+
+    for lote in lotes:
+        r_tg = requests.post(
+            f"https://api.telegram.org/bot{tg_token}/sendMessage",
+            json={"chat_id": chat_id, "text": lote[:4000], "parse_mode": "HTML"},
+            timeout=15,
+        )
+        if not r_tg.ok:
+            texto_plano = (
+                lote.replace("<b>", "")
+                .replace("</b>", "")
+                .replace("<i>", "")
+                .replace("</i>", "")
+                .replace("&lt;", "<")
+            )
+            requests.post(
+                f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                json={"chat_id": chat_id, "text": texto_plano[:4000]},
+                timeout=15,
+            ).raise_for_status()
+
+
 @app.api_route("/vigilar", methods=["GET", "POST"])
 def ejecutar_vigilancia(key: str = Query(default="")):
     cron_secret = os.getenv("CRON_SECRET", "")
@@ -296,7 +336,13 @@ def ejecutar_vigilancia(key: str = Query(default="")):
             sb.table("zonas_sismicas").update(update_data).eq("zona", zona).execute()
 
     alertas = sb.table("alertas_usuario").select("*").execute().data or []
-    notificaciones = []
+    vinculos = {
+        v["user_id"]: v["chat_id"]
+        for v in (sb.table("vinculos_telegram").select("user_id,chat_id").execute().data or [])
+        if v.get("chat_id")
+    }
+    por_chat = {}
+    sin_vinculo = 0
     for a in alertas:
         zona = a["zona"]
         umbral = float(a.get("umbral_multiplicador", 2.0))
@@ -317,51 +363,19 @@ def ejecutar_vigilancia(key: str = Query(default="")):
                 regionales,
             )
 
-            notificaciones.append(construir_mensaje_alerta(
+            chat = vinculos.get(a.get("user_id"))
+            if not chat:
+                sin_vinculo += 1
+                continue
+            por_chat.setdefault(chat, []).append(construir_mensaje_alerta(
                 zona, estado_txt, resumen_simple, frec_txt, info, umbral,
                 cercanos, m45_plus, regionales,
             ))
 
     alerta_enviada = False
-    if notificaciones:
-        cabecera = (
-            "🚨 <b>Alerta sísmica</b>\n"
-            "<i>Estimación estadística (datos USGS + modelo). No predice cuándo ocurrirá un terremoto: "
-            "indica si el riesgo de esta semana está por encima o por debajo de lo normal en tu zona. "
-            "M6.5+ = terremoto fuerte; \"1x\" = riesgo normal, \"2x\" = el doble.</i>\n\n"
-        )
-        pie = "\n\n🌐 Panel web: https://ultimo-modulo.vercel.app"
-
-        lotes = []
-        tam_lote = 4
-        for i in range(0, len(notificaciones), tam_lote):
-            bloque = "\n\n".join(notificaciones[i:i + tam_lote])
-            if i == 0:
-                bloque = cabecera + bloque
-            if i + tam_lote >= len(notificaciones):
-                bloque = bloque + pie
-            lotes.append(bloque)
-
-        for lote in lotes:
-            r_tg = requests.post(
-                f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                json={"chat_id": tg_chat_id, "text": lote[:4000], "parse_mode": "HTML"},
-                timeout=15,
-            )
-            if not r_tg.ok:
-                texto_plano = (
-                    lote.replace("<b>", "")
-                    .replace("</b>", "")
-                    .replace("<i>", "")
-                    .replace("</i>", "")
-                    .replace("&lt;", "<")
-                )
-                requests.post(
-                    f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                    json={"chat_id": tg_chat_id, "text": texto_plano[:4000]},
-                    timeout=15,
-                ).raise_for_status()
-            alerta_enviada = True
+    for chat_id, mensajes in por_chat.items():
+        enviar_lotes_telegram(tg_token, chat_id, mensajes)
+        alerta_enviada = True
 
     return {
         "eventos_usgs_96h": len(eventos),
@@ -369,6 +383,8 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         "zonas_actualizadas": len(resultados_zona),
         "alertas_evaluadas": len(alertas),
         "alerta_enviada_telegram": alerta_enviada,
+        "chats_notificados": len(por_chat),
+        "alertas_sin_telegram_vinculado": sin_vinculo,
     }
 
 
@@ -525,6 +541,25 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         )
 
 
+def vincular_telegram(tg_token: str, chat_id: str, codigo: str) -> None:
+    if codigo:
+        sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+        r = sb.table("vinculos_telegram").update({"chat_id": chat_id}).eq("codigo", codigo).execute()
+        ok = bool(r.data)
+        texto = ("✅ Telegram vinculado. Recibirás aquí tus alertas sísmicas. "
+                 "También puedes preguntarme por cualquier zona.") if ok else                 "⚠️ Código no válido. Genera uno nuevo en el panel web."
+    else:
+        texto = "👋 Hola. Para recibir alertas, vincula este chat desde el panel web: https://ultimo-modulo.vercel.app"
+    requests.post(f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                  json={"chat_id": chat_id, "text": texto}, timeout=15)
+
+
+@app.get("/bot-info")
+def bot_info():
+    r = requests.get(f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/getMe", timeout=10)
+    return {"username": r.json().get("result", {}).get("username", "")}
+
+
 @app.post("/telegram-webhook")
 def telegram_webhook(update: dict, background_tasks: BackgroundTasks):
     message = update.get("message") or {}
@@ -535,6 +570,11 @@ def telegram_webhook(update: dict, background_tasks: BackgroundTasks):
         return {"ok": True}
 
     tg_token = os.environ["TELEGRAM_BOT_TOKEN"]
+
+    if texto_usuario.startswith("/start"):
+        codigo = texto_usuario.partition(" ")[2].strip()
+        vincular_telegram(tg_token, chat_id, codigo)
+        return {"ok": True}
 
     msg_id = enviar_progreso_tg(
         tg_token,
