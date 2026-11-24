@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import math
@@ -417,10 +418,225 @@ def enviar_progreso_tg(tg_token: str, chat_id: str, texto: str, msg_id: int | No
     return msg_id
 
 
+def llamar_llm(prompt: str):
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    respuesta = ""
+    ultimo_error = ""
+    errores = []
+    if openai_key:
+        modelo_oa = os.getenv("OPENAI_MODEL", "gpt-6-luna")
+        try:
+            r_oa = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {openai_key}"},
+                json={
+                    "model": modelo_oa,
+                    "messages": [{"role": "user", "content": prompt}],
+                    **({"reasoning_effort": os.getenv("OPENAI_REASONING", "low")}
+                       if modelo_oa.startswith(("gpt-6", "gpt-5")) else {}),
+                },
+                timeout=40,
+            )
+            if r_oa.ok:
+                respuesta = (r_oa.json()["choices"][0]["message"]["content"] or "").strip()
+            else:
+                errores.append(f"openai:{modelo_oa} ({r_oa.status_code})")
+                print(f"[openai] {modelo_oa} ({r_oa.status_code}): {r_oa.text[:120]}", flush=True)
+        except requests.RequestException as e:
+            errores.append(f"openai:{modelo_oa} ({type(e).__name__})")
+            print(f"[openai] {modelo_oa}: {type(e).__name__}", flush=True)
+
+    modelos = [m.strip() for m in os.getenv("GEMINI_MODELS", "").split(",") if m.strip()] or [
+        "gemini-flash-latest",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-3-flash-preview",
+    ]
+    for modelo in (modelos if (gemini_key and not respuesta) else []):
+        try:
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={gemini_key}",
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=40,
+            )
+        except requests.RequestException as e:
+            ultimo_error = f"{modelo}: {type(e).__name__}"
+            print(f"[gemini] {ultimo_error}", flush=True)
+            errores.append(f"{modelo} ({type(e).__name__})")
+            continue
+        if r.ok:
+            respuesta = (
+                r.json()
+                .get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "No pude generar respuesta.")
+            )
+            break
+        ultimo_error = f"{modelo} ({r.status_code}): {r.text[:120]}"
+        print(f"[gemini] {ultimo_error}", flush=True)
+        errores.append(f"{modelo} ({r.status_code})")
+    return respuesta, errores
+
+
+def enviar_respuesta_tg(tg_token: str, chat_id: str, msg_id, respuesta: str) -> None:
+    if msg_id:
+        r_final = requests.post(
+            f"https://api.telegram.org/bot{tg_token}/editMessageText",
+            json={
+                "chat_id": chat_id,
+                "message_id": msg_id,
+                "text": respuesta,
+                "parse_mode": "HTML",
+            },
+            timeout=15,
+        )
+        if not r_final.ok:
+            requests.post(
+                f"https://api.telegram.org/bot{tg_token}/editMessageText",
+                json={"chat_id": chat_id, "message_id": msg_id, "text": respuesta},
+                timeout=15,
+            )
+    else:
+        requests.post(
+            f"https://api.telegram.org/bot{tg_token}/sendMessage",
+            json={"chat_id": chat_id, "text": respuesta, "parse_mode": "HTML"},
+            timeout=15,
+        )
+
+
+HIST_INICIO = "2015-01-01"
+USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+PALABRAS_HIST = re.compile(
+    r"\b(19|20)\d{2}\b|hist[oó]ric|pasad|hace \d+|mayor(es)? (sismo|terremoto)|"
+    r"(terremoto|sismo) (de|del|en)|[uú]ltim[oa]s? (mes|a[ñn]o|semana)|a[ñn]o pasado",
+    re.I,
+)
+
+
+def _feature_a_fila(ev: dict):
+    props = ev.get("properties") or {}
+    coords = (ev.get("geometry") or {}).get("coordinates") or [None, None, None]
+    if props.get("mag") is None or props.get("time") is None:
+        return None
+    return {
+        "id": ev.get("id"),
+        "fecha": datetime.fromtimestamp(props["time"] / 1000, tz=timezone.utc).isoformat(),
+        "mag": props["mag"],
+        "prof": coords[2],
+        "lat": coords[1],
+        "lon": coords[0],
+        "lugar": props.get("place"),
+    }
+
+
+@app.api_route("/historial/cargar", methods=["GET", "POST"])
+def cargar_historial(desde: str, hasta: str, min_mag: float = 4.5, key: str = Query(default="")):
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if cron_secret and key != cron_secret:
+        raise HTTPException(status_code=401, detail="Clave inválida")
+    r = requests.get(
+        USGS_URL,
+        params={"format": "geojson", "starttime": desde, "endtime": hasta,
+                "minmagnitude": min_mag, "limit": 20000, "orderby": "time"},
+        timeout=90,
+    )
+    r.raise_for_status()
+    filas = [f for f in (_feature_a_fila(e) for e in r.json().get("features", [])) if f and f["id"]]
+    sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+    for i in range(0, len(filas), 1000):
+        sb.table("sismos_historicos").upsert(filas[i:i + 1000], on_conflict="id").execute()
+    return {"desde": desde, "hasta": hasta, "cargados": len(filas)}
+
+
+def extraer_filtros_historicos(texto: str):
+    """Devuelve filtros si la pregunta pide sismos pasados concretos; si no, None."""
+    if not PALABRAS_HIST.search(texto):
+        return None
+    prompt = (
+        f"Hoy es {datetime.now(timezone.utc).date().isoformat()}. Si la pregunta pide sismos PASADOS concretos "
+        "(por fecha, año, lugar o magnitud), responde SOLO este JSON sin texto extra: "
+        '{"historico": true, "desde": "AAAA-MM-DD", "hasta": "AAAA-MM-DD", "min_mag": 6.0, '
+        '"lugar": "palabra clave en inglés como aparece en USGS, p.ej. Chile, Japan, Mexico; vacío si no hay", "limite": 5}. '
+        'Si no es una consulta de sismos pasados responde {"historico": false}. '
+        f"Pregunta: {texto}"
+    )
+    salida, _ = llamar_llm(prompt)
+    m = re.search(r"\{.*\}", salida or "", re.S)
+    if not m:
+        return None
+    try:
+        f = json.loads(m.group(0))
+        if not f.get("historico"):
+            return None
+        return {
+            "desde": str(f["desde"])[:10],
+            "hasta": str(f["hasta"])[:10],
+            "min_mag": max(4.5, float(f.get("min_mag") or 4.5)),
+            "lugar": str(f.get("lugar") or "").strip(),
+            "limite": max(1, min(int(f.get("limite") or 5), 10)),
+        }
+    except Exception:
+        return None
+
+
+def buscar_sismos_pasados(sb, f: dict):
+    """Primero la base propia; si no hay datos (o el rango es anterior a la carga), USGS en vivo."""
+    if f["desde"] >= HIST_INICIO:
+        q = (sb.table("sismos_historicos").select("fecha,mag,lugar,prof")
+             .gte("fecha", f["desde"]).lte("fecha", f["hasta"] + "T23:59:59")
+             .gte("mag", f["min_mag"]))
+        if f["lugar"]:
+            q = q.ilike("lugar", f"%{f['lugar']}%")
+        filas = q.order("mag", desc=True).limit(f["limite"]).execute().data or []
+        if filas:
+            return filas, "📚 Fuente: base de datos propia (USGS, M4.5+ desde 2015)"
+    try:
+        r = requests.get(
+            USGS_URL,
+            params={"format": "geojson", "starttime": f["desde"], "endtime": f["hasta"],
+                    "minmagnitude": f["min_mag"], "orderby": "magnitude", "limit": 300},
+            timeout=40,
+        )
+        r.raise_for_status()
+        filas = [x for x in (_feature_a_fila(e) for e in r.json().get("features", [])) if x]
+        if f["lugar"]:
+            filas = [x for x in filas if f["lugar"].lower() in (x["lugar"] or "").lower()]
+        return filas[: f["limite"]], "🌐 Fuente: USGS en tiempo real (no estaba en la base propia)"
+    except requests.RequestException:
+        return [], "🌐 Fuente: USGS en tiempo real (no disponible ahora)"
+
+
+def responder_historico(sb, texto_usuario: str, f: dict) -> str:
+    filas, fuente = buscar_sismos_pasados(sb, f)
+    datos = "\n".join(
+        f"- {x['fecha'][:10]}: M{x['mag']} · {x.get('lugar')} · profundidad {x.get('prof')} km" for x in filas
+    ) or "(sin resultados)"
+    ficha = "\n".join(f"- {c['contenido']}" for c in recuperar_conocimiento(texto_usuario, sb))
+    prompt = (
+        "Eres un asistente que explica sismos pasados a ciudadanos sin conocimientos técnicos. Responde en español "
+        "con SOLO etiquetas HTML de Telegram (<b>, <i>); PROHIBIDO Markdown o asteriscos; usa &lt; para el símbolo menor que. "
+        "Usa EXCLUSIVAMENTE estos datos (no inventes fechas, magnitudes ni lugares). Si no hay resultados, dilo y sugiere "
+        "ampliar fechas o bajar la magnitud. Presenta los sismos como lista (fecha, magnitud, lugar) y una frase de contexto. "
+        f"Termina EXACTAMENTE con esta línea: {fuente}\n\n"
+        f"Sismos encontrados:\n{datos}\n"
+        + (f"\nConocimiento de apoyo (opcional):\n{ficha}\n" if ficha else "")
+        + f"\nPregunta: {texto_usuario}"
+    )
+    respuesta, errores = llamar_llm(prompt)
+    if not respuesta:
+        respuesta = "⚠️ No pude redactar la respuesta ahora. (Probé: " + ", ".join(errores) + ")\n" + fuente
+    return respuesta
+
+
 def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, msg_id: int | None):
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
 
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+    filtros = extraer_filtros_historicos(texto_usuario)
+    if filtros:
+        enviar_respuesta_tg(tg_token, chat_id, msg_id, responder_historico(sb, texto_usuario, filtros))
+        return
     zonas_db = sb.table("zonas_sismicas").select("*").execute().data or []
 
     evaluaciones = []
@@ -499,90 +715,14 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             + bloque_rag
             + f"\n\nPregunta del usuario: {texto_usuario}"
         )
-        respuesta = ""
-        ultimo_error = ""
-        errores = []
-        if openai_key:
-            modelo_oa = os.getenv("OPENAI_MODEL", "gpt-6-luna")
-            try:
-                r_oa = requests.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {openai_key}"},
-                    json={
-                        "model": modelo_oa,
-                        "messages": [{"role": "user", "content": prompt}],
-                        **({"reasoning_effort": os.getenv("OPENAI_REASONING", "low")}
-                           if modelo_oa.startswith(("gpt-6", "gpt-5")) else {}),
-                    },
-                    timeout=40,
-                )
-                if r_oa.ok:
-                    respuesta = (r_oa.json()["choices"][0]["message"]["content"] or "").strip()
-                else:
-                    errores.append(f"openai:{modelo_oa} ({r_oa.status_code})")
-                    print(f"[openai] {modelo_oa} ({r_oa.status_code}): {r_oa.text[:120]}", flush=True)
-            except requests.RequestException as e:
-                errores.append(f"openai:{modelo_oa} ({type(e).__name__})")
-                print(f"[openai] {modelo_oa}: {type(e).__name__}", flush=True)
-
-        modelos = [m.strip() for m in os.getenv("GEMINI_MODELS", "").split(",") if m.strip()] or [
-            "gemini-flash-latest",
-            "gemini-3.1-flash-lite-preview",
-            "gemini-3-flash-preview",
-        ]
-        for modelo in (modelos if (gemini_key and not respuesta) else []):
-            try:
-                r = requests.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={gemini_key}",
-                    json={"contents": [{"parts": [{"text": prompt}]}]},
-                    timeout=40,
-                )
-            except requests.RequestException as e:
-                ultimo_error = f"{modelo}: {type(e).__name__}"
-                print(f"[gemini] {ultimo_error}", flush=True)
-                errores.append(f"{modelo} ({type(e).__name__})")
-                continue
-            if r.ok:
-                respuesta = (
-                    r.json()
-                    .get("candidates", [{}])[0]
-                    .get("content", {})
-                    .get("parts", [{}])[0]
-                    .get("text", "No pude generar respuesta.")
-                )
-                break
-            ultimo_error = f"{modelo} ({r.status_code}): {r.text[:120]}"
-            print(f"[gemini] {ultimo_error}", flush=True)
-            errores.append(f"{modelo} ({r.status_code})")
+        respuesta, errores = llamar_llm(prompt)
 
         if not respuesta:
             respuesta = "⚠️ El asistente de IA tardó demasiado en responder. Inténtalo de nuevo en un minuto. (Probé: " + ", ".join(errores) + ")"
     else:
         respuesta = "Falta configurar OPENAI_API_KEY o GEMINI_API_KEY en Render."
 
-    if msg_id:
-        r_final = requests.post(
-            f"https://api.telegram.org/bot{tg_token}/editMessageText",
-            json={
-                "chat_id": chat_id,
-                "message_id": msg_id,
-                "text": respuesta,
-                "parse_mode": "HTML",
-            },
-            timeout=15,
-        )
-        if not r_final.ok:
-            requests.post(
-                f"https://api.telegram.org/bot{tg_token}/editMessageText",
-                json={"chat_id": chat_id, "message_id": msg_id, "text": respuesta},
-                timeout=15,
-            )
-    else:
-        requests.post(
-            f"https://api.telegram.org/bot{tg_token}/sendMessage",
-            json={"chat_id": chat_id, "text": respuesta, "parse_mode": "HTML"},
-            timeout=15,
-        )
+    enviar_respuesta_tg(tg_token, chat_id, msg_id, respuesta)
 
 
 RAG_DIR = Path(__file__).resolve().parent.parent / "rag" / "conocimiento"
