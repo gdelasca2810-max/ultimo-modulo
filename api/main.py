@@ -591,7 +591,7 @@ EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embe
 
 def generar_embedding(texto: str, tarea: str) -> list:
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if openai_key:  # mismo proveedor para indexar y consultar (768 dim); reindexar si se cambia
+    if openai_key and os.getenv("RAG_EMBEDDINGS", "gemini").lower() == "openai":  # mismo proveedor para indexar y consultar (768 dim); reindexar si se cambia
         r = requests.post(
             "https://api.openai.com/v1/embeddings",
             headers={"Authorization": f"Bearer {openai_key}"},
