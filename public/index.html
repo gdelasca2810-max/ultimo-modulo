@@ -3,78 +3,373 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Monitor de Riesgo Sísmico — USGS ComCat</title>
+  <title>Monitor de Riesgo Sísmico Relativo — USGS + ML</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --accent: #38bdf8; --warn: #f59e0b; --border: #334155; }
+    :root {
+      --bg: #0b1120;
+      --card: #151f32;
+      --card-soft: #1a263c;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --warn: #f59e0b;
+      --ok: #22c55e;
+      --border: #293548;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; padding: 24px; }
-    .container { max-width: 1000px; margin: 0 auto; }
-    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-    h1 { font-size: 1.4rem; color: var(--accent); }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 20px; }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    input, select, button { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #0f172a; color: var(--text); font-size: 0.9rem; }
-    button { background: var(--accent); color: #0f172a; font-weight: 600; cursor: pointer; border: none; }
-    button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; font-size: 0.88rem; }
-    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
-    th { background: #0b1120; color: var(--muted); }
-    .pill-warn { background: rgba(245, 158, 11, 0.2); color: #fbbf24; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-    .pill-ok { background: rgba(74, 222, 128, 0.15); color: #4ade80; padding: 2px 8px; border-radius: 999px; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      padding: 24px 16px;
+    }
+    .container { max-width: 1080px; margin: 0 auto; }
+
+    /* Cabecera */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 18px;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    h1 { font-size: 1.5rem; color: var(--accent); letter-spacing: -0.01em; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-top: 4px; max-width: 680px; }
+    .badge-status {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    /* Tarjetas y Guía rápida */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .guide-step {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .guide-step .step-num {
+      display: inline-block;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.78rem;
+      padding: 2px 9px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+    }
+    .guide-step h3 { font-size: 0.96rem; margin-bottom: 6px; color: var(--text); }
+    .guide-step p { font-size: 0.84rem; color: var(--muted); }
+
+    /* KPIs resumen */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .kpi {
+      background: var(--card-soft);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .kpi-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi-value { font-size: 1.35rem; font-weight: 700; margin-top: 4px; color: var(--text); }
+    .kpi-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+    /* Formularios y controles */
+    .form-grid {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+    input, select, button {
+      padding: 9px 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    button {
+      background: var(--accent);
+      color: #0b1120;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s;
+    }
+    button:hover { background: var(--accent-hover); }
+    button.secondary {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-weight: 600;
+    }
+    button.secondary:hover { color: var(--text); border-color: var(--muted); }
+
+    /* Barra de herramientas de tabla */
+    .table-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.86rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    /* Tabla */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      margin-bottom: 20px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { background: #0d1526; color: var(--text); font-weight: 600; }
+    th small { display: block; font-weight: 400; color: var(--muted); font-size: 0.76rem; margin-top: 2px; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+    .pill-warn {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    .pill-ok {
+      display: inline-block;
+      background: rgba(34, 197, 94, 0.14);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    .sub-data { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+
+    /* Glosario inferior */
+    .glossary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .glossary-item h4 { font-size: 0.86rem; color: var(--accent); margin-bottom: 4px; }
+    .glossary-item p { font-size: 0.82rem; color: var(--muted); }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <div>
-        <h1>Monitor de Riesgo Sísmico Relativo (USGS ComCat)</h1>
-        <p style="color: var(--muted); font-size: 0.85rem;">20 zonas tectónicas · Evaluación de enjambres locales en ventana de 96h</p>
+        <h1>Monitor de Riesgo Sísmico Relativo (USGS + IA)</h1>
+        <p class="subtitle">
+          Sistema de vigilancia temprana que analiza cada hora los sismos registrados por el Servicio Geológico de EE. UU. (USGS) y estima mediante Machine Learning si existe un repunte local frente al comportamiento histórico normal.
+        </p>
       </div>
-      <div id="auth-status" style="font-size: 0.85rem; color: var(--muted);">Conectando...</div>
+      <div id="auth-status" class="badge-status">Conectando...</div>
     </header>
+
+    <!-- Guía rápida en 3 pasos para cualquier usuario -->
+    <section class="guide-grid">
+      <div class="guide-step">
+        <span class="step-num">Paso 1 · Datos en vivo</span>
+        <h3>Vigilancia de 20 regiones sísmicas</h3>
+        <p>El sistema lee automáticamente los temblores de las últimas <strong>96 horas</strong> alrededor de 20 zonas tectónicas clave del planeta.</p>
+      </div>
+      <div class="guide-step">
+        <span class="step-num">Paso 2 · Modelo Predictivo</span>
+        <h3>Detección de enjambres (Multiplicador)</h3>
+        <p>Compara la actividad actual con 11 años de historial para calcular si el riesgo semanal de un sismo <strong>M6.5+</strong> se mantiene normal (<strong>1x</strong>) o se multiplica (<strong>2x o más</strong>).</p>
+      </div>
+      <div class="guide-step">
+        <span class="step-num">Paso 3 · Alertas y Bot IA</span>
+        <h3>Avisos y consultas en Telegram</h3>
+        <p>Inicia sesión abajo para activar alertas automáticas cuando una región supere el umbral elegido, o pregunta directamente a nuestro bot en Telegram.</p>
+      </div>
+    </section>
+
+    <!-- Indicadores resumen -->
+    <section class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Regiones Monitoreadas</div>
+        <div class="kpi-value" id="kpi-total">20</div>
+        <div class="kpi-sub">Cinturón de Fuego y zonas activas</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Con Señal Local Activa</div>
+        <div class="kpi-value" id="kpi-activas" style="color: #fbbf24;">—</div>
+        <div class="kpi-sub">Temblores cercanos o profundos recientes</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">En Actividad Normal</div>
+        <div class="kpi-value" id="kpi-normales" style="color: #4ade80;">—</div>
+        <div class="kpi-sub">Sin repunte sísmico en 96 horas</div>
+      </div>
+    </section>
 
     <!-- Panel de Login / Registro -->
     <div class="card" id="login-box">
-      <h3 style="margin-bottom: 10px; font-size: 1rem;">Acceso a Alertas Personalizadas</h3>
-      <div class="row">
-        <input type="email" id="email" placeholder="tu@email.com">
-        <input type="password" id="password" placeholder="Contraseña (mín. 6 caracteres)">
+      <h3 style="margin-bottom: 4px; font-size: 1.02rem;">🔔 Configurar Alertas Personalizadas en Telegram</h3>
+      <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 14px;">
+        Inicia sesión o crea una cuenta gratuita para elegir qué regiones quieres vigilar y con qué nivel de sensibilidad recibir avisos.
+      </p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="email">Correo electrónico</label>
+          <input type="email" id="email" placeholder="tu@email.com">
+        </div>
+        <div class="field">
+          <label for="password">Contraseña (mín. 6 caracteres)</label>
+          <input type="password" id="password" placeholder="••••••">
+        </div>
         <button onclick="iniciarSesion()">Entrar</button>
         <button class="secondary" onclick="registrarse()">Crear cuenta</button>
       </div>
-      <p id="auth-msg" style="margin-top: 8px; font-size: 0.85rem; color: var(--warn);"></p>
+      <p id="auth-msg" style="margin-top: 10px; font-size: 0.85rem; color: var(--warn);"></p>
     </div>
 
     <!-- Panel Privado (visible solo tras login) -->
     <div class="card" id="user-panel" style="display: none;">
-      <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
-        <h3>Mis Zonas Vigiladas (RLS Activo)</h3>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+        <div>
+          <h3 style="font-size: 1.05rem;">🔔 Mis Zonas Vigiladas</h3>
+          <p style="font-size: 0.84rem; color: var(--muted); margin-top: 2px;">
+            Recibirás una alerta automática en Telegram cada hora si alguna de tus zonas elegidas alcanza o supera el multiplicador configurado.
+          </p>
+        </div>
         <button class="secondary" onclick="cerrarSesion()">Cerrar sesión</button>
       </div>
-      <div class="row" style="margin-bottom: 14px;">
-        <select id="select-zona"></select>
-        <input type="number" id="umbral" value="2.0" step="0.5" min="1.2" style="width: 110px;" title="Multiplicador mínimo">
-        <button onclick="guardarAlerta()">+ Vigilar zona</button>
+
+      <div class="form-grid" style="margin-bottom: 16px; background: var(--card-soft); padding: 14px; border-radius: 10px;">
+        <div class="field" style="flex: 1; min-width: 210px;">
+          <label for="select-zona">1. Elige la región a vigilar</label>
+          <select id="select-zona"></select>
+        </div>
+        <div class="field" style="flex: 1; min-width: 240px;">
+          <label for="umbral">2. Sensibilidad del aviso (Multiplicador)</label>
+          <select id="umbral">
+            <option value="1.3">1.3x — Repunte leve (Muy sensible)</option>
+            <option value="1.5">1.5x — Actividad moderada</option>
+            <option value="2.0" selected>2.0x — Enjambre activo (Recomendado)</option>
+            <option value="3.0">3.0x — Anomalía alta (Solo alertas críticas)</option>
+          </select>
+        </div>
+        <button onclick="guardarAlerta()">+ Activar alerta</button>
       </div>
+
       <ul id="mis-alertas" style="list-style: none; font-size: 0.9rem;"></ul>
     </div>
 
+    <!-- Barra de filtro de tabla -->
+    <div class="table-toolbar">
+      <div class="field" style="flex: 1; min-width: 220px; max-width: 340px;">
+        <input type="text" id="buscador-zona" placeholder="Buscar región (ej. Chile, Japón, México...)" oninput="filtrarTabla()">
+      </div>
+      <label class="checkbox-label">
+        <input type="checkbox" id="solo-activas" onchange="filtrarTabla()">
+        Mostrar solo regiones con señal sísmica activa
+      </label>
+    </div>
+
     <!-- Tabla pública desde Supabase -->
-    <table>
-      <thead>
-        <tr>
-          <th>Zona Tectónica</th>
-          <th>Tasa Base M6.5+ (7d)</th>
-          <th>Sismos &lt;200km (96h)</th>
-          <th>Prof. 70–150km</th>
-          <th>Estado Enjambre</th>
-        </tr>
-      </thead>
-      <tbody id="zonas-body">
-        <tr><td colspan="5">Cargando datos reales desde Supabase...</td></tr>
-      </tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>
+              Zona Tectónica
+              <small>Región monitoreada</small>
+            </th>
+            <th>
+              Riesgo Habitual M6.5+ (7 días)
+              <small>Probabilidad semanal en calma</small>
+            </th>
+            <th>
+              Sismos Cercanos (&lt;200 km)
+              <small>Registrados en últimas 96 horas</small>
+            </th>
+            <th>
+              Sismos Profundos (70–150 km)
+              <small>Actividad en placa de subducción</small>
+            </th>
+            <th>
+              Estado Actual
+              <small>Evaluación de actividad local</small>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="zonas-body">
+          <tr><td colspan="5">Cargando datos en tiempo real desde Supabase...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Glosario de ayuda para interpretar los datos -->
+    <div class="card">
+      <h3 style="font-size: 0.98rem;">📖 ¿Cómo interpretar los datos de esta tabla?</h3>
+      <div class="glossary">
+        <div class="glossary-item">
+          <h4>Riesgo Habitual M6.5+ (7 días)</h4>
+          <p>Es la probabilidad normal de que ocurra un terremoto fuerte (magnitud 6.5 o superior) en esa región durante una semana cualquiera, según 11 años de registros históricos.</p>
+        </div>
+        <div class="glossary-item">
+          <h4>Sismos Cercanos (&lt;200 km)</h4>
+          <p>Cantidad de temblores detectados en las últimas 96 horas cerca del núcleo de la zona, diferenciando los microsismos leves (&lt;M4.5) de los sismos moderados (M4.5+).</p>
+        </div>
+        <div class="glossary-item">
+          <h4>Sismos Profundos (70–150 km)</h4>
+          <p>Temblores ocurridos a profundidad intermedia en zonas de subducción, un indicador relevante de tensión tectónica regional.</p>
+        </div>
+        <div class="glossary-item">
+          <h4>Multiplicador de Riesgo (1x, 2x, 3x)</h4>
+          <p><strong>1x</strong> indica actividad completamente normal. <strong>2x</strong> significa que la actividad reciente duplica la probabilidad semanal habitual de esa zona.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -82,29 +377,79 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_-O6gSSWO-IW49-KoUt6f5A_957UQy16';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    let zonasCache = [];
+
+    function renderizarTabla(lista) {
+      const tbody = document.getElementById('zonas-body');
+      if (!lista.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color: var(--muted);">No hay regiones que coincidan con el filtro aplicado.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = lista.map(z => {
+        const tasa = Number(z.tasa_historica_m65_7d || 0);
+        const pct = (tasa * 100).toFixed(2);
+        const semanasEq = tasa > 0 ? Math.round(1 / tasa) : 52;
+        const total200 = Number(z.loc200_n96_con || 0);
+        const leves200 = Number(z.loc200_n96_sin45 || 0);
+        const mod200 = Math.max(0, total200 - leves200);
+        const prof = Number(z.lat_n96_prof70_150 || 0);
+        const enjambre = total200 > 0 || prof >= 2;
+
+        return `
+          <tr>
+            <td><strong>${z.zona}</strong></td>
+            <td>
+              <strong>${pct}%</strong>
+              <span class="sub-data">~1 sismo fuerte cada ${semanasEq} sem.</span>
+            </td>
+            <td>
+              <strong>${total200}</strong> ${total200 === 1 ? 'sismo' : 'sismos'}
+              <span class="sub-data">${mod200} moderados (M4.5+) · ${leves200} leves</span>
+            </td>
+            <td>
+              <strong>${prof}</strong>
+              <span class="sub-data">${prof > 0 ? 'Con actividad profunda' : 'Sin eventos profundos'}</span>
+            </td>
+            <td>
+              ${enjambre
+                ? '<span class="pill-warn">🟡 Señal local activa</span><span class="sub-data">Repunte detectado en 96h</span>'
+                : '<span class="pill-ok">🟢 Actividad normal</span><span class="sub-data">Sin enjambre reciente</span>'}
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    function filtrarTabla() {
+      const texto = (document.getElementById('buscador-zona').value || '').toLowerCase().trim();
+      const soloActivas = document.getElementById('solo-activas').checked;
+
+      const filtradas = zonasCache.filter(z => {
+        const coincideTexto = z.zona.toLowerCase().includes(texto);
+        const enjambre = Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof70_150 || 0) >= 2;
+        return coincideTexto && (!soloActivas || enjambre);
+      });
+
+      renderizarTabla(filtradas);
+    }
+
     async function cargarZonas() {
       const { data, error } = await db.from('zonas_sismicas').select('*').order('zona');
       if (error) {
-        document.getElementById('zonas-body').innerHTML = `<tr><td colspan="5" style="color:#f87171;">Error: ${error.message}</td></tr>`;
+        document.getElementById('zonas-body').innerHTML = `<tr><td colspan="5" style="color:#f87171;">Error al cargar datos: ${error.message}</td></tr>`;
         return;
       }
-      const tbody = document.getElementById('zonas-body');
-      const select = document.getElementById('select-zona');
-      tbody.innerHTML = '';
-      select.innerHTML = '';
 
-      data.forEach(z => {
-        select.innerHTML += `<option value="${z.zona}">${z.zona}</option>`;
-        const enjambre = z.loc200_n96_con > 0 || z.lat_n96_prof70_150 >= 2;
-        tbody.innerHTML += `
-          <tr>
-            <td><strong>${z.zona}</strong></td>
-            <td>${(z.tasa_historica_m65_7d * 100).toFixed(2)}%</td>
-            <td>${z.loc200_n96_con} (sin45: ${z.loc200_n96_sin45})</td>
-            <td>${z.lat_n96_prof70_150}</td>
-            <td>${enjambre ? '<span class="pill-warn">Señal local activa</span>' : '<span class="pill-ok">Normal</span>'}</td>
-          </tr>`;
-      });
+      zonasCache = data || [];
+      const select = document.getElementById('select-zona');
+      select.innerHTML = zonasCache.map(z => `<option value="${z.zona}">${z.zona}</option>`).join('');
+
+      const activas = zonasCache.filter(z => Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof70_150 || 0) >= 2).length;
+      document.getElementById('kpi-total').textContent = zonasCache.length;
+      document.getElementById('kpi-activas').textContent = activas;
+      document.getElementById('kpi-normales').textContent = Math.max(0, zonasCache.length - activas);
+
+      filtrarTabla();
     }
 
     async function actualizarUIUsuario() {
@@ -115,7 +460,7 @@
         document.getElementById('user-panel').style.display = 'block';
         cargarMisAlertas();
       } else {
-        document.getElementById('auth-status').textContent = 'Modo público (sin sesión)';
+        document.getElementById('auth-status').textContent = 'Modo público (inicia sesión para configurar alertas)';
         document.getElementById('login-box').style.display = 'block';
         document.getElementById('user-panel').style.display = 'none';
       }
@@ -125,7 +470,7 @@
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
       const { error } = await db.auth.signUp({ email, password });
-      document.getElementById('auth-msg').textContent = error ? error.message : 'Cuenta creada. Ya puedes entrar.';
+      document.getElementById('auth-msg').textContent = error ? error.message : 'Cuenta creada correctamente. Ya puedes pulsar Entrar.';
     }
 
     async function iniciarSesion() {
@@ -145,11 +490,11 @@
       const { data } = await db.from('alertas_usuario').select('*');
       const ul = document.getElementById('mis-alertas');
       ul.innerHTML = (data || []).map(a =>
-        `<li style="padding: 6px 0; border-bottom: 1px solid #334155;">
-          🔔 <strong>${a.zona}</strong> — Avisar si riesgo ≥ ${a.umbral_multiplicador}x
-          <button class="secondary" style="padding:2px 8px; margin-left:8px;" onclick="borrarAlerta('${a.id}')">Quitar</button>
+        `<li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span>🔔 <strong>${a.zona}</strong> — Avisar en Telegram cuando el riesgo suba a <strong>${a.umbral_multiplicador}x</strong> o más de lo habitual</span>
+          <button class="secondary" style="padding: 4px 10px; font-size: 0.82rem;" onclick="borrarAlerta('${a.id}')">Eliminar alerta</button>
         </li>`
-      ).join('') || '<li style="color:var(--muted);">Aún no vigilas ninguna zona.</li>';
+      ).join('') || '<li style="color: var(--muted);">Aún no tienes alertas configuradas. Selecciona una región arriba y pulsa "+ Activar alerta".</li>';
     }
 
     async function guardarAlerta() {
