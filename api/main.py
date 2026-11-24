@@ -235,17 +235,30 @@ async def telegram_webhook(update: dict):
     resumen_zonas = []
     for z in zonas_db:
         nombre = z.get("zona")
-        tasa_base = artefacto["tasas_zona"].get(nombre, 0.0)
-        mult = z.get("multiplicador_riesgo", "N/A")
-        prob = z.get("probabilidad_m65_7d")
-        prob_pct = f"{float(prob)*100:.2f}%" if prob is not None else "N/A"
-        base_pct = f"{tasa_base*100:.2f}%"
+        if nombre not in artefacto["tasas_zona"]:
+            continue
+        loc200_con = int(z.get("loc200_n96_con") or 0)
+        loc200_sin45 = int(z.get("loc200_n96_sin45") or 0)
+        loc500_con = int(z.get("loc500_n96_con") or 0)
+        prof70_150 = int(z.get("lat_n96_prof70_150") or 0)
+
+        pred = calcular_prediccion(ConsultaRiesgo(
+            zona=nombre,
+            loc200_n96_con=loc200_con,
+            loc200_n96_sin45=loc200_sin45,
+            loc500_n96_con=loc500_con,
+            lat_n96_prof70_150=prof70_150,
+        ))
+        prob_pct = f"{pred['probabilidad_m65_7d']*100:.2f}%"
+        base_pct = f"{pred['tasa_historica_7d']*100:.2f}%"
+        mult = pred["multiplicador_riesgo"]
+
         resumen_zonas.append(
             f"- {nombre}: prob_m65_7d={prob_pct} (tasa_historica={base_pct}), "
-            f"multiplicador={mult}x, sismos_200km_96h={z.get('loc200_n96_con', 0)}, "
-            f"sismos_menores_4.5_200km={z.get('loc200_n96_sin45', 0)}, "
-            f"sismos_500km_96h={z.get('loc500_n96_con', 0)}, "
-            f"sismos_prof_70_150km={z.get('lat_n96_prof70_150', 0)}"
+            f"multiplicador={mult}x, sismos_200km_96h={loc200_con}, "
+            f"sismos_menores_4.5_200km={loc200_sin45}, "
+            f"sismos_500km_96h={loc500_con}, "
+            f"sismos_prof_70_150km={prof70_150}"
         )
 
     if gemini_key:
