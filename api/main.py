@@ -273,8 +273,8 @@ def ejecutar_vigilancia(key: str = Query(default="")):
                 profundos,
             )
 
-            txt_cercanos = f"{cercanos} {'sismo' if cercanos == 1 else 'sismos'} cercanos (<200 km, {m45_plus} de M4.5+)"
-            txt_regionales = f"{regionales} {'regional' if regionales == 1 else 'regionales'} (<500 km)"
+            txt_cercanos = f"{cercanos} {'sismo' if cercanos == 1 else 'sismos'} cercanos (&lt;200 km, {m45_plus} de M4.5+)"
+            txt_regionales = f"{regionales} {'regional' if regionales == 1 else 'regionales'} (&lt;500 km)"
 
             notificaciones.append(
                 f"📍 <b>Zona:</b> {zona}\n"
@@ -288,18 +288,42 @@ def ejecutar_vigilancia(key: str = Query(default="")):
 
     alerta_enviada = False
     if notificaciones:
-        mensaje = (
+        cabecera = (
             "🚨 <b>REPORTE DE VIGILANCIA SÍSMICA (USGS + ML)</b>\n"
-            "<i>Nota: Un sismo M6.5+ es un sismo fuerte; el multiplicador compara la estimación actual con la tasa base de la zona.</i>\n\n"
-            + "\n\n".join(notificaciones)
-            + "\n\n🌐 Panel web: https://ultimo-modulo.vercel.app"
+            "<i>Un sismo M6.5+ es un sismo fuerte; el multiplicador compara la estimación actual con la tasa base de la zona.</i>\n\n"
         )
-        requests.post(
-            f"https://api.telegram.org/bot{tg_token}/sendMessage",
-            json={"chat_id": tg_chat_id, "text": mensaje, "parse_mode": "HTML"},
-            timeout=15,
-        ).raise_for_status()
-        alerta_enviada = True
+        pie = "\n\n🌐 Panel web: https://ultimo-modulo.vercel.app"
+
+        lotes = []
+        tam_lote = 4
+        for i in range(0, len(notificaciones), tam_lote):
+            bloque = "\n\n".join(notificaciones[i:i + tam_lote])
+            if i == 0:
+                bloque = cabecera + bloque
+            if i + tam_lote >= len(notificaciones):
+                bloque = bloque + pie
+            lotes.append(bloque)
+
+        for lote in lotes:
+            r_tg = requests.post(
+                f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                json={"chat_id": tg_chat_id, "text": lote[:4000], "parse_mode": "HTML"},
+                timeout=15,
+            )
+            if not r_tg.ok:
+                texto_plano = (
+                    lote.replace("<b>", "")
+                    .replace("</b>", "")
+                    .replace("<i>", "")
+                    .replace("</i>", "")
+                    .replace("&lt;", "<")
+                )
+                requests.post(
+                    f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                    json={"chat_id": tg_chat_id, "text": texto_plano[:4000]},
+                    timeout=15,
+                ).raise_for_status()
+            alerta_enviada = True
 
     return {
         "eventos_usgs_96h": len(eventos),
