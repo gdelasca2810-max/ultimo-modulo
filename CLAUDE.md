@@ -15,6 +15,7 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 |---|---|
 | Reglas de memoria y documentación | `docs/claude/memoria.md` |
 | Uso de modelos y agentes | `docs/claude/modelos.md` |
+| Brief (problema, usuarios, alcance) | `docs/brief.md` |
 | Arquitectura, usuarios, RAG | `docs/arquitectura.md` |
 | Modelo de machine learning | `docs/modelo_ml.md` |
 | Pendientes | `docs/todo.md` |
