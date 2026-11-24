@@ -3,393 +3,359 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Monitor de Riesgo Sísmico Relativo — USGS + ML</title>
+<title>Monitor de Riesgo Sísmico — USGS + IA</title>
+<meta name="description" content="Qué zonas del mundo están más activas de lo habitual, con datos reales del USGS, un modelo de aprendizaje automático y avisos por Telegram.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
-  --bg: #0b1120;
-  --card: #151f32;
-  --card-soft: #1a263c;
-  --text: #f8fafc;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
-  --accent-hover: #0ea5e9;
-  --warn: #f59e0b;
-  --ok: #22c55e;
-  --border: #293548;
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --text: #0f172a;
+  --muted: #566176;
+  --border: #e1e6ee;
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --ok-bg: #dcf5e6; --ok-ink: #0b5a2b;
+  --warn-bg: #fdecc8; --warn-ink: #7a4a00;
+  --bar: #2a78d6; --bar-bg: #e6ecf5;
+  --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0f1c; --surface: #141c2d; --surface-2: #19233a; --text: #eef2f8; --muted: #9aa8bf;
+    --border: #25324a; --accent: #3987e5; --ok-bg: #12382a; --ok-ink: #86e3ac;
+    --warn-bg: #43310c; --warn-ink: #f5c767; --bar: #3987e5; --bar-bg: #22304a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a0f1c; --surface: #141c2d; --surface-2: #19233a; --text: #eef2f8; --muted: #9aa8bf;
+  --border: #25324a; --accent: #3987e5; --ok-bg: #12382a; --ok-ink: #86e3ac;
+  --warn-bg: #43310c; --warn-ink: #f5c767; --bar: #3987e5; --bar-bg: #22304a;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.55;
-  padding: 24px 16px;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.55; -webkit-font-smoothing: antialiased;
 }
-.container { max-width: 1080px; margin: 0 auto; }
+a { color: var(--accent); }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
 
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 18px;
-  margin-bottom: 22px;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-h1 { font-size: 1.5rem; color: var(--accent); letter-spacing: -0.01em; }
-.subtitle { color: var(--muted); font-size: 0.9rem; margin-top: 4px; max-width: 680px; }
-.badge-status {
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  color: var(--muted);
-}
+/* ---------- Hero oscuro ---------- */
+.hero { background: radial-gradient(1200px 500px at 80% -10%, #1b3a6b 0%, transparent 60%), #0a1224; color: #eaf0fb; padding: 18px 0 110px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; }
+.brand-dot { width: 12px; height: 12px; border-radius: 50%; background: #ff6b4a; box-shadow: 0 0 0 4px rgba(255,107,74,.25); animation: pulse 2.4s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,107,74,.5);} 100% { box-shadow: 0 0 0 14px rgba(255,107,74,0);} }
+.top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chip { font-size: .82rem; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #cdd8ec; }
+.icon-btn { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #eaf0fb; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: .82rem; }
+.hero-text { margin: 34px 0 6px; max-width: 760px; }
+.hero h1 { font-size: clamp(1.8rem, 4.2vw, 2.9rem); line-height: 1.1; letter-spacing: -.025em; }
+.hero h1 em { font-style: normal; color: #ff8a6b; }
+.hero p.lead { margin-top: 12px; color: #b4c2dc; font-size: 1.04rem; max-width: 640px; }
+.cta-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: .92rem; padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); text-decoration: none; }
+.btn:hover { filter: brightness(1.08); }
+.btn.ghost { background: rgba(255,255,255,.1); color: #eaf0fb; border: 1px solid rgba(255,255,255,.18); }
+.btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+.btn.sm { padding: 6px 11px; font-size: .82rem; border-radius: 8px; }
 
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-.guide-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
-  margin-bottom: 20px;
-}
-.guide-step {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-}
-.guide-step .step-num {
-  display: inline-block;
-  background: rgba(56, 189, 248, 0.15);
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 0.78rem;
-  padding: 2px 9px;
-  border-radius: 999px;
-  margin-bottom: 8px;
-}
-.guide-step h3 { font-size: 0.96rem; margin-bottom: 6px; color: var(--text); }
-.guide-step p { font-size: 0.84rem; color: var(--muted); }
+/* ---------- Mapa ---------- */
+.map-card { margin-top: -86px; background: #0d1830; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; overflow: hidden; box-shadow: 0 20px 50px rgba(2,6,16,.35); position: relative; }
+#map { height: min(520px, 62vh); min-height: 340px; background: #0d1830; }
+.map-legend { position: absolute; left: 12px; bottom: 12px; z-index: 500; background: rgba(10,18,36,.86); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.12); color: #d6e0f2; border-radius: 12px; padding: 10px 12px; font-size: .78rem; display: grid; gap: 5px; max-width: 250px; }
+.lg { display: flex; align-items: center; gap: 8px; }
+.lg i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+.map-note { position: absolute; right: 12px; top: 12px; z-index: 500; font-size: .76rem; color: #cdd8ec; background: rgba(10,18,36,.78); padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); }
 
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.kpi {
-  background: var(--card-soft);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-}
-.kpi-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.kpi-value { font-size: 1.35rem; font-weight: 700; margin-top: 4px; color: var(--text); }
-.kpi-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+/* ---------- KPIs ---------- */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 18px 0 8px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
+.kpi-label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.kpi-value { font-size: 2.1rem; font-weight: 750; letter-spacing: -.03em; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi-sub { font-size: .8rem; color: var(--muted); margin-top: 2px; }
 
-.form-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: flex-end;
+/* ---------- Layout principal ---------- */
+.main-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; margin-top: 18px; align-items: start; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
+.card h2 { font-size: 1.12rem; letter-spacing: -.01em; }
+.card .hint { color: var(--muted); font-size: .86rem; margin-top: 2px; }
+.side { position: sticky; top: 14px; display: grid; gap: 16px; }
+.table-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0 10px; }
+input[type=text], input[type=email], input[type=password], input[type=number], select {
+  width: 100%; font: inherit; font-size: .92rem; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
 }
-.field { display: flex; flex-direction: column; gap: 5px; }
-.field label { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
-input, select, button {
-  padding: 9px 13px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.9rem;
-}
-input:focus, select:focus { outline: none; border-color: var(--accent); }
-button {
-  background: var(--accent);
-  color: #0b1120;
-  font-weight: 700;
-  cursor: pointer;
-  border: none;
-  transition: background 0.15s;
-}
-button:hover { background: var(--accent-hover); }
-button.secondary {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  font-weight: 600;
-}
-button.secondary:hover { color: var(--text); border-color: var(--muted); }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field { display: grid; gap: 5px; }
+.field label { font-size: .78rem; font-weight: 600; color: var(--muted); }
+.check { display: flex; align-items: center; gap: 8px; font-size: .86rem; color: var(--muted); cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
 
-.table-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.86rem;
-  color: var(--muted);
-  cursor: pointer;
-}
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; min-width: 640px; }
+th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-weight: 650; }
+td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tbody tr { cursor: pointer; transition: background .12s; }
+tbody tr:hover { background: var(--surface-2); }
+.zone-name { font-weight: 650; }
+.sub-data { display: block; font-size: .76rem; color: var(--muted); margin-top: 1px; }
+.pbar { height: 6px; border-radius: 3px; background: var(--bar-bg); margin-top: 6px; overflow: hidden; width: 120px; }
+.pbar i { display: block; height: 100%; background: var(--bar); border-radius: 3px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; font-size: .78rem; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+.pill.warn { background: var(--warn-bg); color: var(--warn-ink); }
 
-.table-wrap {
-  overflow-x: auto;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  margin-bottom: 20px;
-}
-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
-th { background: #0d1526; color: var(--text); font-weight: 600; }
-th small { display: block; font-weight: 400; color: var(--muted); font-size: 0.76rem; margin-top: 2px; }
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(255, 255, 255, 0.02); }
+/* ---------- Panel usuario ---------- */
+.stack { display: grid; gap: 12px; margin-top: 14px; }
+.alert-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: .86rem; }
+.msg { font-size: .84rem; color: var(--warn-ink); min-height: 1em; }
+.tg-box { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); font-size: .86rem; }
 
-.pill-warn {
-  display: inline-block;
-  background: rgba(245, 158, 11, 0.18);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-weight: 600;
-  font-size: 0.8rem;
-}
-.pill-ok {
-  display: inline-block;
-  background: rgba(34, 197, 94, 0.14);
-  color: #4ade80;
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-weight: 600;
-  font-size: 0.8rem;
-}
-.sub-data { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+/* ---------- Cómo funciona ---------- */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+.step { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+.step b.n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .85rem; margin-bottom: 8px; }
+.step h3 { font-size: 1rem; margin-bottom: 4px; }
+.step p { color: var(--muted); font-size: .88rem; }
+details.card { margin-top: 18px; }
+details summary { cursor: pointer; font-weight: 650; }
+.glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
+.glossary h4 { font-size: .88rem; margin-bottom: 3px; }
+.glossary p { font-size: .84rem; color: var(--muted); }
+footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26px 16px 40px; }
 
-.glossary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 14px;
-  margin-top: 12px;
+@media (max-width: 980px) {
+  .main-grid { grid-template-columns: 1fr; }
+  .side { position: static; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .steps { grid-template-columns: 1fr; }
 }
-.glossary-item h4 { font-size: 0.86rem; color: var(--accent); margin-bottom: 4px; }
-.glossary-item p { font-size: 0.82rem; color: var(--muted); }
+@media (max-width: 520px) {
+  .kpi-value { font-size: 1.7rem; }
+  .hero { padding-bottom: 96px; }
+}
+@media (prefers-reduced-motion: reduce) { .brand-dot { animation: none; } html { scroll-behavior: auto; } }
 </style>
 </head>
 <body>
-<div class="container">
-<header>
-  <div>
-    <h1>Monitor de Riesgo Sísmico Relativo (USGS + IA)</h1>
-    <p class="subtitle">
-      Sistema de vigilancia temprana que analiza cada hora los sismos registrados por el Servicio Geológico de EE. UU. (USGS) y estima mediante Machine Learning si existe un repunte local frente al comportamiento histórico normal.
-    </p>
-  </div>
-  <div id="auth-status" class="badge-status">Conectando...</div>
-</header>
 
-<section class="guide-grid">
-  <div class="guide-step">
-    <span class="step-num">Paso 1 · Datos en vivo</span>
-    <h3>Vigilancia de 21 regiones sísmicas</h3>
-    <p>El sistema lee automáticamente los temblores de las últimas <strong>96 horas</strong> alrededor de las regiones tectónicas monitoreadas.</p>
-  </div>
-  <div class="guide-step">
-    <span class="step-num">Paso 2 · Modelo Predictivo</span>
-    <h3>Detección de enjambres (Multiplicador)</h3>
-    <p>Compara la actividad actual con el historial para calcular si el riesgo semanal de un sismo <strong>M6.5+</strong> se mantiene normal (<strong>1x</strong>) o se multiplica (<strong>2x o más</strong>).</p>
-  </div>
-  <div class="guide-step">
-    <span class="step-num">Paso 3 · Alertas y Bot IA</span>
-    <h3>Avisos y consultas en Telegram</h3>
-    <p>Inicia sesión abajo para activar alertas automáticas cuando una región supere el umbral elegido, o pregunta directamente a nuestro bot en Telegram.</p>
+<section class="hero">
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand"><span class="brand-dot"></span> Monitor Sísmico</div>
+      <div class="top-actions">
+        <span id="auth-status" class="chip">Conectando...</span>
+        <button class="icon-btn" onclick="alternarTema()" aria-label="Cambiar tema claro/oscuro">◐ Tema</button>
+      </div>
+    </div>
+    <div class="hero-text">
+      <h1>¿Qué zonas del mundo están hoy <em>más activas de lo habitual</em>?</h1>
+      <p class="lead">Leemos cada hora los sismos reales del USGS y un modelo de IA compara cada región con su comportamiento histórico. Te avisamos por Telegram, en lenguaje claro. No predice terremotos: mide riesgo relativo.</p>
+      <div class="cta-row">
+        <a class="btn" href="#alertas">🔔 Activar mis alertas</a>
+        <a class="btn ghost" id="cta-bot" href="#alertas">💬 Preguntar al bot de Telegram</a>
+      </div>
+    </div>
   </div>
 </section>
 
-<section class="kpi-grid">
-  <div class="kpi">
-    <div class="kpi-label">Regiones Monitoreadas</div>
-    <div class="kpi-value" id="kpi-total">21</div>
-    <div class="kpi-sub">Cinturón de Fuego y zonas activas</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Con Señal Local Activa</div>
-    <div class="kpi-value" id="kpi-activas" style="color: #fbbf24;">—</div>
-    <div class="kpi-sub">Temblores cercanos o profundos recientes</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">En Actividad Normal</div>
-    <div class="kpi-value" id="kpi-normales" style="color: #4ade80;">—</div>
-    <div class="kpi-sub">Sin repunte sísmico en 96 horas</div>
-  </div>
-</section>
-
-<div class="card" id="login-box">
-  <h3 style="margin-bottom: 4px; font-size: 1.02rem;">🔔 Configurar Alertas Personalizadas en Telegram</h3>
-  <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 14px;">
-    Inicia sesión o crea una cuenta gratuita para elegir qué regiones quieres vigilar y con qué nivel de sensibilidad recibir avisos.
-  </p>
-  <div class="form-grid">
-    <div class="field">
-      <label for="email">Correo electrónico</label>
-      <input type="email" id="email" placeholder="tu@email.com">
+<main class="wrap">
+  <div class="map-card">
+    <div id="map" aria-label="Mapa mundial de sismos recientes y zonas monitoreadas"></div>
+    <span class="map-note" id="map-note">Cargando sismos…</span>
+    <div class="map-legend">
+      <div class="lg"><i style="background:#5aa2ff"></i> Sismo M4.5+ (últimos 7 días) · el tamaño indica la magnitud</div>
+      <div class="lg"><i style="background:#2fd07b;border:2px solid #fff"></i> ✓ Zona monitoreada: actividad normal</div>
+      <div class="lg"><i style="background:#ffb020;border:2px solid #fff"></i> ⚠ Zona monitoreada: señal local activa</div>
     </div>
-    <div class="field">
-      <label for="password">Contraseña (mín. 6 caracteres)</label>
-      <input type="password" id="password" placeholder="••••••">
-    </div>
-    <button onclick="iniciarSesion()">Entrar</button>
-    <button class="secondary" onclick="registrarse()">Crear cuenta</button>
-  </div>
-  <p id="auth-msg" style="margin-top: 10px; font-size: 0.85rem; color: var(--warn);"></p>
-</div>
-
-<div class="card" id="user-panel" style="display: none;">
-  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
-    <div>
-      <h3 style="font-size: 1.05rem;">🔔 Mis Zonas Vigiladas</h3>
-      <p style="font-size: 0.84rem; color: var(--muted); margin-top: 2px;">
-        Recibirás una alerta automática en Telegram cada hora si alguna de tus zonas elegidas alcanza o supera el multiplicador configurado.
-      </p>
-    </div>
-    <button class="secondary" onclick="cerrarSesion()">Cerrar sesión</button>
   </div>
 
-  <div class="form-grid" style="margin-bottom: 16px; background: var(--card-soft); padding: 14px; border-radius: 10px;">
-    <div class="field" style="flex: 1; min-width: 210px;">
-      <label for="select-zona">1. Elige la región a vigilar</label>
-      <select id="select-zona"></select>
-    </div>
-    <div class="field" style="flex: 1; min-width: 240px;">
-      <label for="umbral">2. Sensibilidad del aviso (Multiplicador editable/seleccionable)</label>
-      <input
-        type="number"
-        id="umbral"
-        step="0.1"
-        min="0.1"
-        max="50"
-        value="0.5"
-        list="sugerencias-umbral"
-        placeholder="Escribe o elige (ej. 0.5, 1.3, 2.0)"
-      >
-      <datalist id="sugerencias-umbral">
-        <option value="0.5">0.5x — Umbral bajo / prueba</option>
-        <option value="1.0">1.0x — Nivel habitual</option>
-        <option value="1.3">1.3x — Repunte leve (Muy sensible)</option>
-        <option value="1.5">1.5x — Actividad moderada</option>
-        <option value="2.0">2.0x — Enjambre activo (Recomendado)</option>
-        <option value="3.0">3.0x — Anomalía alta (Solo alertas críticas)</option>
-      </datalist>
-    </div>
-    <button onclick="guardarAlerta()">+ Activar alerta</button>
-  </div>
-  <p id="alerta-msg" style="margin-bottom: 12px; font-size: 0.85rem; color: var(--warn);"></p>
+  <section class="kpis" aria-label="Indicadores">
+    <div class="kpi"><div class="kpi-label">Regiones monitoreadas</div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-sub">Cinturón de Fuego y zonas activas</div></div>
+    <div class="kpi"><div class="kpi-label">Con señal local activa</div><div class="kpi-value" id="kpi-activas">—</div><div class="kpi-sub">Temblores cercanos o profundos en 96 h</div></div>
+    <div class="kpi"><div class="kpi-label">En actividad normal</div><div class="kpi-value" id="kpi-normales">—</div><div class="kpi-sub">Sin repunte reciente</div></div>
+    <div class="kpi"><div class="kpi-label">Sismos M4.5+ en 7 días</div><div class="kpi-value" id="kpi-quakes">—</div><div class="kpi-sub" id="kpi-max">En todo el mundo (USGS)</div></div>
+  </section>
 
-  <ul id="mis-alertas" style="list-style: none; font-size: 0.9rem;"></ul>
-  <div id="bloque-telegram" style="margin-top: 14px; font-size: 0.88rem;">
-    <span id="tg-estado">📱 Telegram: comprobando...</span>
-    <button class="secondary" id="btn-tg" style="padding: 4px 10px; font-size: 0.82rem; margin-left: 8px;" onclick="vincularTelegram()">Vincular Telegram</button>
-    <a id="tg-link" href="#" target="_blank" rel="noopener" style="display:none; margin-left: 8px;">Abrir el bot y pulsar «Iniciar»</a>
-  </div>
-</div>
+  <div class="main-grid">
+    <section class="card" id="zonas">
+      <h2>Regiones vigiladas</h2>
+      <p class="hint">Toca una fila para verla en el mapa. «Riesgo habitual» es la probabilidad normal de un sismo fuerte (M6.5+) en una semana cualquiera.</p>
+      <div class="table-toolbar">
+        <div class="field" style="flex:1; min-width:200px; max-width:320px;">
+          <input type="text" id="buscador-zona" placeholder="Buscar región (Chile, Japón, México…)" oninput="filtrarTabla()" aria-label="Buscar región">
+        </div>
+        <label class="check"><input type="checkbox" id="solo-activas" onchange="filtrarTabla()"> Solo con señal activa</label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Región</th>
+              <th>Riesgo habitual M6.5+ / 7 días</th>
+              <th>Cercanos &lt;200 km (96 h)</th>
+              <th>Profundos 70–150 km</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="zonas-body"><tr><td colspan="5">Cargando datos en tiempo real…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
 
-<div class="table-toolbar">
-  <div class="field" style="flex: 1; min-width: 220px; max-width: 340px;">
-    <input type="text" id="buscador-zona" placeholder="Buscar región (ej. Chile, Japón, México...)" oninput="filtrarTabla()">
-  </div>
-  <label class="checkbox-label">
-    <input type="checkbox" id="solo-activas" onchange="filtrarTabla()">
-    Mostrar solo regiones con señal sísmica activa
-  </label>
-</div>
+    <aside class="side" id="alertas">
+      <div class="card" id="login-box">
+        <h2>🔔 Alertas en Telegram</h2>
+        <p class="hint">Crea una cuenta gratuita, elige tus regiones y recibe un aviso claro cuando el riesgo suba.</p>
+        <div class="stack">
+          <div class="field"><label for="email">Correo electrónico</label><input type="email" id="email" placeholder="tu@email.com" autocomplete="email"></div>
+          <div class="field"><label for="password">Contraseña (mín. 6 caracteres)</label><input type="password" id="password" placeholder="••••••" autocomplete="current-password"></div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn" style="flex:1; justify-content:center;" onclick="iniciarSesion()">Entrar</button>
+            <button class="btn secondary" style="flex:1; justify-content:center;" onclick="registrarse()">Crear cuenta</button>
+          </div>
+          <p id="auth-msg" class="msg"></p>
+        </div>
+      </div>
 
-<div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>
-          Zona Tectónica
-          <small>Región monitoreada</small>
-        </th>
-        <th>
-          Riesgo Habitual M6.5+ (7 días)
-          <small>Probabilidad semanal en calma</small>
-        </th>
-        <th>
-          Sismos Cercanos (&lt;200 km)
-          <small>Registrados en últimas 96 horas</small>
-        </th>
-        <th>
-          Sismos Profundos (70–150 km)
-          <small>Actividad en placa de subducción</small>
-        </th>
-        <th>
-          Estado Actual
-          <small>Evaluación de actividad local</small>
-        </th>
-      </tr>
-    </thead>
-    <tbody id="zonas-body">
-      <tr><td colspan="5">Cargando datos en tiempo real desde Supabase...</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<div class="card">
-  <h3 style="font-size: 0.98rem;">📖 ¿Cómo interpretar los datos de esta tabla?</h3>
-  <div class="glossary">
-    <div class="glossary-item">
-      <h4>Riesgo Habitual M6.5+ (7 días)</h4>
-      <p>Es la probabilidad normal de que ocurra un terremoto fuerte (magnitud 6.5 o superior) en esa región durante una semana cualquiera, según registros históricos.</p>
-    </div>
-    <div class="glossary-item">
-      <h4>Sismos Cercanos (&lt;200 km)</h4>
-      <p>Cantidad de temblores detectados en las últimas 96 horas cerca del núcleo de la zona, diferenciando los microsismos leves (&lt;M4.5) de los sismos moderados (M4.5+).</p>
-    </div>
-    <div class="glossary-item">
-      <h4>Sismos Profundos (70–150 km)</h4>
-      <p>Temblores ocurridos a profundidad intermedia en zonas de subducción, un indicador relevante de tensión tectónica regional.</p>
-    </div>
-    <div class="glossary-item">
-      <h4>Multiplicador de Riesgo (0.5x, 1x, 2x, 3x)</h4>
-      <p><strong>1x</strong> indica actividad igual a lo habitual. <strong>2x</strong> significa que la actividad reciente duplica la probabilidad semanal base de esa zona.</p>
-    </div>
+      <div class="card" id="user-panel" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div><h2>🔔 Mis alertas</h2><p class="hint">Recibirás un aviso en Telegram cuando una región alcance tu sensibilidad.</p></div>
+          <button class="btn secondary sm" onclick="cerrarSesion()">Salir</button>
+        </div>
+        <div class="stack">
+          <div class="field"><label for="select-zona">1. Región a vigilar</label><select id="select-zona"></select></div>
+          <div class="field">
+            <label for="umbral">2. Sensibilidad (multiplicador)</label>
+            <input type="number" id="umbral" step="0.1" min="0.1" max="50" value="2.0" list="sugerencias-umbral" placeholder="Ej. 1.5, 2.0">
+            <datalist id="sugerencias-umbral">
+              <option value="0.5">0.5x — Prueba (avisa casi siempre)</option>
+              <option value="1.0">1.0x — Nivel habitual</option>
+              <option value="1.3">1.3x — Repunte leve</option>
+              <option value="1.5">1.5x — Actividad moderada</option>
+              <option value="2.0">2.0x — Enjambre activo (recomendado)</option>
+              <option value="3.0">3.0x — Anomalía alta</option>
+            </datalist>
+          </div>
+          <button class="btn" style="justify-content:center;" onclick="guardarAlerta()">+ Activar alerta</button>
+          <p id="alerta-msg" class="msg"></p>
+          <ul id="mis-alertas" style="list-style:none; display:grid; gap:8px;"></ul>
+          <div class="tg-box" id="bloque-telegram">
+            <span id="tg-estado">📱 Telegram: comprobando…</span>
+            <button class="btn sm" id="btn-tg" style="justify-self:start;" onclick="vincularTelegram()">Vincular Telegram</button>
+            <a id="tg-link" href="#" target="_blank" rel="noopener" style="display:none;">Abrir el bot y pulsar «Iniciar»</a>
+          </div>
+        </div>
+      </div>
+    </aside>
   </div>
-</div>
-</div>
+
+  <section class="steps" aria-label="Cómo funciona">
+    <div class="step"><b class="n">1</b><h3>Datos reales en vivo</h3><p>Cada hora leemos los sismos de las últimas 96 horas alrededor de cada región tectónica (fuente: USGS).</p></div>
+    <div class="step"><b class="n">2</b><h3>Modelo de IA</h3><p>Compara la actividad actual con el historial y calcula si el riesgo semanal es normal (<b>1x</b>) o mayor (<b>2x o más</b>).</p></div>
+    <div class="step"><b class="n">3</b><h3>Avisos que se entienden</h3><p>Alertas en Telegram y un bot que responde en lenguaje claro, incluso sobre sismos de hace años.</p></div>
+  </section>
+
+  <details class="card">
+    <summary>📖 ¿Cómo interpretar los datos?</summary>
+    <div class="glossary">
+      <div><h4>Riesgo habitual M6.5+ (7 días)</h4><p>Probabilidad normal de un terremoto fuerte en esa región durante una semana cualquiera, según el historial.</p></div>
+      <div><h4>Sismos cercanos (&lt;200 km)</h4><p>Temblores detectados en las últimas 96 horas cerca del núcleo de la zona.</p></div>
+      <div><h4>Sismos profundos (70–150 km)</h4><p>Temblores a profundidad intermedia en zonas de subducción; un indicador de tensión tectónica.</p></div>
+      <div><h4>Multiplicador (0.5x, 1x, 2x, 3x)</h4><p><b>1x</b> es lo habitual. <b>2x</b> significa que la estimación actual duplica la probabilidad normal de esa zona. Una zona de riesgo muy bajo puede marcar 10x y seguir siendo improbable.</p></div>
+    </div>
+  </details>
+</main>
+
+<footer>Datos: USGS · Modelo propio de ML · Es una estimación estadística, no un pronóstico. Ante un sismo real sigue las indicaciones de protección civil.<br>Mapa base © Esri, HERE, Garmin, OpenStreetMap contributors</footer>
 
 <script>
 const SUPABASE_URL = 'https://mknmzuvagniweqlljund.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_-O6gSSWO-IW49-KoUt6f5A_957UQy16';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const API = 'https://ultimo-modulo.onrender.com';
 
 let zonasCache = [];
+let map, zonaLayer, quakeLayer;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esActiva = z => Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof70_150 || 0) >= 2;
 
+/* ---------- Tema ---------- */
+function alternarTema() {
+  const raiz = document.documentElement;
+  const oscuro = raiz.dataset.theme ? raiz.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  raiz.dataset.theme = oscuro ? 'light' : 'dark';
+  try { localStorage.setItem('tema', raiz.dataset.theme); } catch (e) {}
+}
+try { const t = localStorage.getItem('tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+/* ---------- Mapa ---------- */
+function iniciarMapa() {
+  map = L.map('map', { worldCopyJump: true, minZoom: 2, zoomControl: true, attributionControl: false }).setView([15, -20], 2);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 8 }).addTo(map);
+  quakeLayer = L.layerGroup().addTo(map);
+  zonaLayer = L.layerGroup().addTo(map);
+  cargarSismosRecientes();
+}
+
+async function cargarSismosRecientes() {
+  const nota = document.getElementById('map-note');
+  try {
+    const r = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson');
+    const gj = await r.json();
+    const ev = gj.features || [];
+    ev.sort((a, b) => a.properties.mag - b.properties.mag);
+    ev.forEach(f => {
+      const [lon, lat] = f.geometry.coordinates;
+      const m = f.properties.mag;
+      L.circleMarker([lat, lon], { radius: Math.max(3, (m - 3.6) * 3.6), color: '#9cc6ff', weight: .6, fillColor: '#5aa2ff', fillOpacity: .45 })
+        .bindPopup(`<b>M${m.toFixed(1)}</b><br>${esc(f.properties.place)}<br><small>${new Date(f.properties.time).toLocaleString()}</small>`)
+        .addTo(quakeLayer);
+    });
+    const mayor = ev[ev.length - 1];
+    document.getElementById('kpi-quakes').textContent = ev.length;
+    if (mayor) document.getElementById('kpi-max').textContent = `Mayor: M${mayor.properties.mag.toFixed(1)} · ${mayor.properties.place}`;
+    nota.textContent = `${ev.length} sismos M4.5+ en 7 días`;
+  } catch (e) {
+    nota.textContent = 'No se pudieron cargar los sismos recientes';
+  }
+}
+
+function pintarZonasEnMapa() {
+  if (!zonaLayer) return;
+  zonaLayer.clearLayers();
+  zonasCache.forEach(z => {
+    if (z.lat_centro == null || z.lon_centro == null) return;
+    const act = esActiva(z);
+    L.circleMarker([z.lat_centro, z.lon_centro], { radius: 9, color: '#ffffff', weight: 2, fillColor: act ? '#ffb020' : '#2fd07b', fillOpacity: .95 })
+      .bindTooltip(`${act ? '⚠' : '✓'} ${esc(z.zona)}`, { direction: 'top' })
+      .bindPopup(`<b>${esc(z.zona)}</b><br>${act ? '⚠ Señal local activa' : '✓ Actividad normal'}<br><small>Cercanos &lt;200 km: ${z.loc200_n96_con || 0} · Profundos: ${z.lat_n96_prof70_150 || 0}</small>`)
+      .addTo(zonaLayer);
+  });
+}
+
+function irAZona(nombre) {
+  const z = zonasCache.find(x => x.zona === nombre);
+  if (!z || !map) return;
+  map.flyTo([z.lat_centro, z.lon_centro], 4, { duration: .9 });
+  document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* ---------- Tabla ---------- */
 function renderizarTabla(lista) {
   const tbody = document.getElementById('zonas-body');
   if (!lista.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="color: var(--muted);">No hay regiones que coincidan con el filtro aplicado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="color: var(--muted);">Ninguna región coincide con el filtro.</td></tr>';
     return;
   }
-
+  const maxTasa = Math.max(...zonasCache.map(z => Number(z.tasa_historica_m65_7d || 0)), 0.0001);
   tbody.innerHTML = lista.map(z => {
     const tasa = Number(z.tasa_historica_m65_7d || 0);
     const pct = (tasa * 100).toFixed(2);
@@ -398,28 +364,17 @@ function renderizarTabla(lista) {
     const leves200 = Number(z.loc200_n96_sin45 || 0);
     const mod200 = Math.max(0, total200 - leves200);
     const prof = Number(z.lat_n96_prof70_150 || 0);
-    const enjambre = total200 > 0 || prof >= 2;
-
+    const act = esActiva(z);
     return `
-      <tr>
-        <td><strong>${z.zona}</strong></td>
-        <td>
-          <strong>${pct}%</strong>
-          <span class="sub-data">~1 sismo fuerte cada ${semanasEq} sem.</span>
-        </td>
-        <td>
-          <strong>${total200}</strong> ${total200 === 1 ? 'sismo' : 'sismos'}
-          <span class="sub-data">${mod200} moderados (M4.5+) · ${leves200} leves</span>
-        </td>
-        <td>
-          <strong>${prof}</strong>
-          <span class="sub-data">${prof > 0 ? 'Con actividad profunda' : 'Sin eventos profundos'}</span>
-        </td>
-        <td>
-          ${enjambre
-            ? '<span class="pill-warn">🟡 Señal local activa</span><span class="sub-data">Repunte detectado en 96h</span>'
-            : '<span class="pill-ok">🟢 Actividad normal</span><span class="sub-data">Sin enjambre reciente</span>'}
-        </td>
+      <tr onclick="irAZona('${esc(z.zona).replace(/'/g, '&#39;')}')">
+        <td class="zone-name">${esc(z.zona)}</td>
+        <td><b>${pct}%</b><span class="sub-data">~1 sismo fuerte cada ${semanasEq} sem.</span>
+          <div class="pbar" aria-hidden="true"><i style="width:${Math.max(4, (tasa / maxTasa) * 100)}%"></i></div></td>
+        <td><b>${total200}</b> ${total200 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">${mod200} moderados (M4.5+) · ${leves200} leves</span></td>
+        <td><b>${prof}</b><span class="sub-data">${prof > 0 ? 'Con actividad profunda' : 'Sin eventos profundos'}</span></td>
+        <td>${act
+          ? '<span class="pill warn">⚠ Señal local activa</span><span class="sub-data">Repunte en 96 h</span>'
+          : '<span class="pill ok">✓ Actividad normal</span><span class="sub-data">Sin repunte reciente</span>'}</td>
       </tr>`;
   }).join('');
 }
@@ -427,35 +382,26 @@ function renderizarTabla(lista) {
 function filtrarTabla() {
   const texto = (document.getElementById('buscador-zona').value || '').toLowerCase().trim();
   const soloActivas = document.getElementById('solo-activas').checked;
-
-  const filtradas = zonasCache.filter(z => {
-    const coincideTexto = z.zona.toLowerCase().includes(texto);
-    const enjambre = Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof70_150 || 0) >= 2;
-    return coincideTexto && (!soloActivas || enjambre);
-  });
-
-  renderizarTabla(filtradas);
+  renderizarTabla(zonasCache.filter(z => z.zona.toLowerCase().includes(texto) && (!soloActivas || esActiva(z))));
 }
 
 async function cargarZonas() {
   const { data, error } = await db.from('zonas_sismicas').select('*').order('zona');
   if (error) {
-    document.getElementById('zonas-body').innerHTML = `<tr><td colspan="5" style="color:#f87171;">Error al cargar datos: ${error.message}</td></tr>`;
+    document.getElementById('zonas-body').innerHTML = `<tr><td colspan="5" style="color:#e34948;">Error al cargar datos: ${esc(error.message)}</td></tr>`;
     return;
   }
-
   zonasCache = data || [];
-  const select = document.getElementById('select-zona');
-  select.innerHTML = zonasCache.map(z => `<option value="${z.zona}">${z.zona}</option>`).join('');
-
-  const activas = zonasCache.filter(z => Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof70_150 || 0) >= 2).length;
+  document.getElementById('select-zona').innerHTML = zonasCache.map(z => `<option value="${esc(z.zona)}">${esc(z.zona)}</option>`).join('');
+  const activas = zonasCache.filter(esActiva).length;
   document.getElementById('kpi-total').textContent = zonasCache.length;
   document.getElementById('kpi-activas').textContent = activas;
   document.getElementById('kpi-normales').textContent = Math.max(0, zonasCache.length - activas);
-
+  pintarZonasEnMapa();
   filtrarTabla();
 }
 
+/* ---------- Usuario ---------- */
 async function actualizarUIUsuario() {
   const { data: { user } } = await db.auth.getUser();
   if (user) {
@@ -465,7 +411,7 @@ async function actualizarUIUsuario() {
     cargarMisAlertas();
     estadoTelegram();
   } else {
-    document.getElementById('auth-status').textContent = 'Modo público (inicia sesión para configurar alertas)';
+    document.getElementById('auth-status').textContent = 'Modo público';
     document.getElementById('login-box').style.display = 'block';
     document.getElementById('user-panel').style.display = 'none';
   }
@@ -495,11 +441,11 @@ async function cargarMisAlertas() {
   const { data } = await db.from('alertas_usuario').select('*');
   const ul = document.getElementById('mis-alertas');
   ul.innerHTML = (data || []).map(a =>
-    `<li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <span>🔔 <strong>${a.zona}</strong> — Avisar en Telegram cuando el riesgo suba a <strong>${a.umbral_multiplicador}x</strong> o más de lo habitual</span>
-      <button class="secondary" style="padding: 4px 10px; font-size: 0.82rem;" onclick="borrarAlerta('${a.id}')">Eliminar alerta</button>
+    `<li class="alert-item">
+      <span>🔔 <b>${esc(a.zona)}</b><span class="sub-data">Avisar desde ${esc(a.umbral_multiplicador)}x</span></span>
+      <button class="btn secondary sm" onclick="borrarAlerta('${esc(a.id)}')">Eliminar</button>
     </li>`
-  ).join('') || '<li style="color: var(--muted);">Aún no tienes alertas configuradas. Selecciona una región arriba y pulsa "+ Activar alerta".</li>';
+  ).join('') || '<li class="hint" style="color:var(--muted); font-size:.86rem;">Aún no tienes alertas. Elige una región y pulsa «Activar alerta».</li>';
 }
 
 async function estadoTelegram() {
@@ -523,7 +469,7 @@ async function vincularTelegram() {
   const { error } = await db.from('vinculos_telegram').upsert({ user_id: user.id, codigo }, { onConflict: 'user_id' });
   if (error) { el.textContent = 'Error: ' + error.message; return; }
   let bot = '';
-  try { bot = (await (await fetch('https://ultimo-modulo.onrender.com/bot-info')).json()).username; } catch (e) {}
+  try { bot = (await (await fetch(API + '/bot-info')).json()).username; } catch (e) {}
   if (!bot) { el.textContent = 'No se pudo obtener el bot; inténtalo de nuevo en un minuto.'; return; }
   const a = document.getElementById('tg-link');
   a.href = `https://t.me/${bot}?start=${codigo}`;
@@ -533,28 +479,17 @@ async function vincularTelegram() {
 
 async function guardarAlerta() {
   const msgEl = document.getElementById('alerta-msg');
-  msgEl.textContent = '';
+  msgEl.style.color = ''; msgEl.textContent = '';
   const { data: { user } } = await db.auth.getUser();
   const zona = document.getElementById('select-zona').value;
   const umbral = parseFloat(document.getElementById('umbral').value);
-
   if (!zona || Number.isNaN(umbral) || umbral <= 0) {
-    msgEl.textContent = 'Escribe o selecciona un multiplicador mayor que 0 (por ejemplo 0.5).';
+    msgEl.textContent = 'Escribe un multiplicador mayor que 0 (por ejemplo 2.0).';
     return;
   }
-
-  const { error } = await db.from('alertas_usuario').insert({
-    user_id: user.id,
-    zona,
-    umbral_multiplicador: umbral
-  });
-
-  if (error) {
-    msgEl.textContent = 'Error al guardar alerta: ' + error.message;
-    return;
-  }
-
-  msgEl.style.color = '#4ade80';
+  const { error } = await db.from('alertas_usuario').insert({ user_id: user.id, zona, umbral_multiplicador: umbral });
+  if (error) { msgEl.textContent = 'Error al guardar alerta: ' + error.message; return; }
+  msgEl.style.color = 'var(--ok-ink)';
   msgEl.textContent = `Alerta guardada: ${zona} en ${umbral}x.`;
   cargarMisAlertas();
 }
@@ -564,8 +499,11 @@ async function borrarAlerta(id) {
   cargarMisAlertas();
 }
 
+/* ---------- Arranque ---------- */
+iniciarMapa();
 cargarZonas();
 actualizarUIUsuario();
+fetch(API + '/bot-info').then(r => r.json()).then(j => { if (j.username) document.getElementById('cta-bot').href = 'https://t.me/' + j.username; }).catch(() => {});
 </script>
 </body>
 </html>
