@@ -5,7 +5,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client
@@ -43,6 +43,7 @@ ZONAS_COORDS = {
     "Sumatra/Andaman": (2.5, 95.5),
     "Taiwan/Ryukyu": (24.0, 122.5),
     "Tonga/Fiji": (-20.0, -175.0),
+    "Venezuela/Caribe": (10.5, -66.9),
 }
 
 
@@ -92,21 +93,36 @@ def calcular_prediccion(datos: ConsultaRiesgo):
     prob_7d = float(artefacto["modelo"].predict_proba(X)[0][1])
     multiplicador = round(prob_7d / tasa_base, 2) if tasa_base > 0 else 1.0
 
+    es_elevado = (
+        multiplicador >= 2.0
+        and prob_7d >= 0.025
+        and datos.loc200_n96_con >= 3
+    )
+
     return {
         "zona": datos.zona,
         "version_modelo": artefacto.get("version", "v1"),
         "probabilidad_m65_7d": round(prob_7d, 5),
         "tasa_historica_7d": round(tasa_base, 5),
         "multiplicador_riesgo": multiplicador,
-        "alerta_enjambre": multiplicador >= 2.0,
+        "alerta_enjambre": es_elevado,
     }
 
 
-def describir_nivel_usuario(multiplicador: float, tasa_base: float):
-    if multiplicador >= 2.0:
-        estado = "🔴 ELEVADO (Enjambre sísmico activo)"
-    elif multiplicador >= 1.3:
-        estado = "🟡 MODERADO (Ligero repunte de actividad)"
+def describir_nivel_usuario(
+    multiplicador: float,
+    prob_7d: float,
+    tasa_base: float,
+    loc200_con: int,
+    prof70_150: int,
+):
+    if multiplicador >= 2.0 and prob_7d >= 0.025 and loc200_con >= 3:
+        estado = "🔴 ELEVADO (Enjambre sísmico local activo)"
+    elif multiplicador >= 1.5 and (loc200_con >= 2 or prof70_150 >= 2):
+        if loc200_con == 0 and prof70_150 > 0:
+            estado = "🟡 MODERADO (Solo actividad profunda en observación, sin sismos cercanos)"
+        else:
+            estado = "🟡 MODERADO (Repunte sísmico leve en observación)"
     else:
         estado = "🟢 NORMAL (Sin actividad inusual)"
 
@@ -222,9 +238,18 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         umbral = float(a.get("umbral_multiplicador", 2.0))
         info = resultados_zona.get(zona)
         det = detalles_zona.get(zona, {})
-        if info and info["multiplicador_riesgo"] >= umbral:
+        if (
+            info
+            and info["multiplicador_riesgo"] >= umbral
+            and info["probabilidad_m65_7d"] >= 0.02
+            and det.get("loc200_con", 0) >= 2
+        ):
             estado_txt, semanas_eq = describir_nivel_usuario(
-                info["multiplicador_riesgo"], info["tasa_historica_7d"]
+                info["multiplicador_riesgo"],
+                info["probabilidad_m65_7d"],
+                info["tasa_historica_7d"],
+                det.get("loc200_con", 0),
+                det.get("prof70_150", 0),
             )
             notificaciones.append(
                 f"📍 <b>Zona:</b> {zona}\n"
@@ -260,6 +285,15 @@ def ejecutar_vigilancia(key: str = Query(default="")):
 
 
 def enviar_progreso_tg(tg_token: str, chat_id: str, texto: str, msg_id: int | None = None):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{tg_token}/sendChatAction",
+            json={"chat_id": chat_id, "action": "typing"},
+            timeout=5,
+        )
+    except Exception:
+        pass
+
     if msg_id:
         r = requests.post(
             f"https://api.telegram.org/bot{tg_token}/editMessageText",
@@ -278,28 +312,13 @@ def enviar_progreso_tg(tg_token: str, chat_id: str, texto: str, msg_id: int | No
     return msg_id
 
 
-@app.post("/telegram-webhook")
-async def telegram_webhook(update: dict):
-    message = update.get("message") or {}
-    chat_id = str((message.get("chat") or {}).get("id", ""))
-    texto_usuario = (message.get("text") or "").strip()
-
-    if not texto_usuario or not chat_id:
-        return {"ok": True}
-
-    tg_token = os.environ["TELEGRAM_BOT_TOKEN"]
+def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, msg_id: int | None):
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-
-    msg_id = enviar_progreso_tg(
-        tg_token,
-        chat_id,
-        "⏳ 1/2 Consultando la red sísmica y calculando probabilidades...",
-    )
 
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
     zonas_db = sb.table("zonas_sismicas").select("*").execute().data or []
 
-    resumen_zonas = []
+    evaluaciones = []
     for z in zonas_db:
         nombre = z.get("zona")
         if nombre not in artefacto["tasas_zona"]:
@@ -317,22 +336,28 @@ async def telegram_webhook(update: dict):
             loc500_n96_con=loc500_con,
             lat_n96_prof70_150=prof70_150,
         ))
-        prob_pct = f"{pred['probabilidad_m65_7d']*100:.2f}%"
-        base_pct = f"{pred['tasa_historica_7d']*100:.2f}%"
+        prob_val = pred["probabilidad_m65_7d"]
+        base_val = pred["tasa_historica_7d"]
         mult = pred["multiplicador_riesgo"]
-        estado_txt, semanas_eq = describir_nivel_usuario(mult, pred["tasa_historica_7d"])
+        estado_txt, semanas_eq = describir_nivel_usuario(
+            mult, prob_val, base_val, loc200_con, prof70_150
+        )
 
-        resumen_zonas.append(
-            f"- {nombre}: estado={estado_txt}, prob_7d={prob_pct}, "
-            f"habitual_7d={base_pct} (equivale a ~1 sismo fuerte cada {semanas_eq} semanas en condiciones normales), "
+        evaluaciones.append((
+            prob_val,
+            f"- {nombre}: estado={estado_txt}, prob_7d={prob_val*100:.2f}%, "
+            f"habitual_7d={base_val*100:.2f}% (~1 sismo fuerte cada {semanas_eq} semanas en condiciones normales), "
             f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} moderados M4.5+ y {loc200_sin45} leves <M4.5), "
             f"sismos_regionales_500km={loc500_con}, sismos_profundos_70_150km={prof70_150}"
-        )
+        ))
+
+    evaluaciones.sort(key=lambda x: x[0], reverse=True)
+    resumen_zonas = [item[1] for item in evaluaciones]
 
     msg_id = enviar_progreso_tg(
         tg_token,
         chat_id,
-        "🧠 2/2 Predicción lista. Redactando explicación clara...",
+        "🧠 2/2 Predicción calculada. Redactando explicación clara...",
         msg_id=msg_id,
     )
 
@@ -341,18 +366,20 @@ async def telegram_webhook(update: dict):
             "Eres un asistente que explica el riesgo sísmico a ciudadanos sin conocimientos técnicos. "
             "Responde en español claro usando EXCLUSIVAMENTE etiquetas HTML de Telegram (<b>negrita</b> e <i>cursiva</i>). "
             "PROHIBIDO usar asteriscos (*) o Markdown. Si escribes símbolos menor que, usa &lt;.\n\n"
+            "REGLA CRÍTICA DE HONESTIDAD: Si 'sismos_cercanos_200km' es 0, NUNCA digas que hay un enjambre sísmico activo; "
+            "explica que no hay temblores cercanos y que la variación se debe únicamente a sismos profundos o a la actividad normal de fondo.\n\n"
             "Usa EXACTAMENTE esta estructura línea por línea (dejando una línea en blanco entre bloques):\n"
             "🔎 <b>Tu consulta:</b> [Resumen breve de lo que preguntó el usuario]\n"
             "📍 <b>Zona analizada:</b> [Nombre exacto de la zona]\n"
-            "🚦 <b>Nivel de actividad actual:</b> [Copia el estado: 🟢 NORMAL, 🟡 MODERADO o 🔴 ELEVADO]\n"
+            "🚦 <b>Nivel de actividad actual:</b> [Copia exactamente el 'estado' proporcionado en los datos]\n"
             "⚠️ <b>Probabilidad de terremoto fuerte (M6.5+ esta semana):</b> <b>[prob_7d]</b> — En esta zona lo habitual en una semana tranquila es [habitual_7d] ([equivalencia en semanas]), por lo que hoy está a <b>[multiplicador]x</b> de su nivel normal.\n"
             "📊 <b>¿En qué se basa este resultado? (últimas 96 horas):</b>\n"
             "• Sismos cercanos (&lt;200 km): [sismos_cercanos_200km] ([moderados M4.5+] moderados M4.5+ y [leves] leves)\n"
             "• Sismos en la región (&lt;500 km): [sismos_regionales_500km]\n"
             "• Sismos en zona profunda (70–150 km): [sismos_profundos_70_150km]\n"
-            "💡 <b>En palabras simples:</b> [1 o 2 frases muy claras explicando qué significa esto hoy para una persona común]\n\n"
-            "Si el usuario pregunta por varias zonas o por las zonas más activas, muestra el Top 3 usando ese mismo formato.\n\n"
-            "Datos calculados en tiempo real:\n"
+            "💡 <b>En palabras simples:</b> [1 o 2 frases muy claras y coherentes con los números reales]\n\n"
+            "Si el usuario pregunta por varias zonas o por las zonas más activas, muestra el Top 3 ordenado por mayor probabilidad real (prob_7d) usando ese mismo formato.\n\n"
+            "Datos calculados en tiempo real (ordenados de mayor a menor probabilidad real):\n"
             + "\n".join(resumen_zonas)
             + f"\n\nPregunta del usuario: {texto_usuario}"
         )
@@ -408,4 +435,25 @@ async def telegram_webhook(update: dict):
             timeout=15,
         )
 
+
+@app.post("/telegram-webhook")
+def telegram_webhook(update: dict, background_tasks: BackgroundTasks):
+    message = update.get("message") or {}
+    chat_id = str((message.get("chat") or {}).get("id", ""))
+    texto_usuario = (message.get("text") or "").strip()
+
+    if not texto_usuario or not chat_id:
+        return {"ok": True}
+
+    tg_token = os.environ["TELEGRAM_BOT_TOKEN"]
+
+    msg_id = enviar_progreso_tg(
+        tg_token,
+        chat_id,
+        "⏳ 1/2 Consultando la red sísmica y calculando probabilidades...",
+    )
+
+    background_tasks.add_task(
+        procesar_consulta_telegram, tg_token, chat_id, texto_usuario, msg_id
+    )
     return {"ok": True}
