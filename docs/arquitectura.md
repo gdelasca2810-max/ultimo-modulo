@@ -25,5 +25,9 @@ USGS ──► /vigilar (api/main.py, Render) ──► Supabase (zonas_sismicas
 
 ## RAG (implementado 2026-11-24)
 - Base de conocimiento: `rag/conocimiento/*.md` (se parte por `## `). SQL: `db/rag_pgvector.sql` (tabla `conocimiento` con `vector(768)` y función `buscar_conocimiento`).
-- Indexar: `GET /rag/ingestar?key=<CRON_SECRET>` en Render (embeddings `gemini-embedding-001`, 768 dim). Repetir tras editar los `.md`.
+- Indexar: `GET /rag/ingestar?key=<CRON_SECRET>` en Render (embeddings `gemini-embedding-001`, 768 dim; `RAG_EMBEDDINGS=openai` usa `text-embedding-3-small`, y obliga a reindexar). Repetir tras editar los `.md`.
 - Consulta: `procesar_consulta_telegram` embebe la pregunta, recupera los 3 fragmentos con similitud >= 0.55 y los añade al prompt de Gemini; los datos en vivo siguen entrando por SQL (RAG híbrido). Si falla, el bot responde sin RAG.
+
+## Modelos del bot de Telegram
+- Orden: OpenAI (`OPENAI_MODEL`, por defecto `gpt-6-luna`, `OPENAI_REASONING=low`) → Gemini (`GEMINI_MODELS`, lista separada por comas). Cada fallo se registra como `[openai]`/`[gemini]` en el log de Render.
+- Variables en Render: `OPENAI_API_KEY`, `GEMINI_API_KEY`, opcionales las anteriores. Probado 2026-11-24: Luna responde; embeddings de OpenAI dieron «no credits», los de Gemini funcionan.
