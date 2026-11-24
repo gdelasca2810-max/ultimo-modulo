@@ -1,4 +1,5 @@
 import os
+import re
 import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -466,6 +467,14 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         msg_id=msg_id,
     )
 
+    contexto_rag = recuperar_conocimiento(texto_usuario, sb) if gemini_key else []
+    bloque_rag = ""
+    if contexto_rag:
+        bloque_rag = (
+            "\n\nConocimiento de apoyo (úsalo SOLO si ayuda a explicar un concepto o dar consejos de seguridad; "
+            "no inventes nada fuera de esto y de los datos; si lo usas, añade al final una línea 📚 <i>Fuente: base de conocimiento</i>):\n"
+            + "\n".join(f"- {f['contenido']}" for f in contexto_rag)
+        )
     if gemini_key:
         prompt = (
             "Eres un asistente que explica el riesgo sísmico a ciudadanos sin conocimientos técnicos. "
@@ -486,6 +495,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             "Si el usuario pregunta por varias zonas o por las zonas más activas, muestra el Top 3 ordenado por mayor probabilidad real (prob_7d) usando ese mismo formato.\n\n"
             "Datos calculados en tiempo real (ordenados de mayor a menor probabilidad real):\n"
             + "\n".join(resumen_zonas)
+            + bloque_rag
             + f"\n\nPregunta del usuario: {texto_usuario}"
         )
         respuesta = ""
@@ -539,6 +549,59 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             json={"chat_id": chat_id, "text": respuesta, "parse_mode": "HTML"},
             timeout=15,
         )
+
+
+RAG_DIR = Path(__file__).resolve().parent.parent / "rag" / "conocimiento"
+EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
+
+
+def generar_embedding(texto: str, tarea: str) -> list:
+    r = requests.post(
+        EMBED_URL,
+        params={"key": os.environ["GEMINI_API_KEY"]},
+        json={
+            "content": {"parts": [{"text": texto[:8000]}]},
+            "taskType": tarea,
+            "outputDimensionality": 768,
+        },
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()["embedding"]["values"]
+
+
+def recuperar_conocimiento(pregunta: str, sb, k: int = 3, min_similitud: float = 0.55) -> list:
+    """RAG: devuelve los fragmentos de la base de conocimiento más cercanos a la pregunta."""
+    try:
+        vec = generar_embedding(pregunta, "RETRIEVAL_QUERY")
+        filas = sb.rpc("buscar_conocimiento", {"query_embedding": vec, "match_count": k}).execute().data or []
+        return [f for f in filas if f.get("similitud", 0) >= min_similitud]
+    except Exception:
+        return []  # sin RAG el bot sigue funcionando con los datos en vivo
+
+
+@app.api_route("/rag/ingestar", methods=["GET", "POST"])
+def ingestar_conocimiento(key: str = Query(default="")):
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if cron_secret and key != cron_secret:
+        raise HTTPException(status_code=401, detail="Clave inválida")
+    sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+    total = 0
+    for md in sorted(RAG_DIR.glob("*.md")):
+        for trozo in re.split(r"^## ", md.read_text(encoding="utf-8"), flags=re.M)[1:]:
+            titulo, _, cuerpo = trozo.partition("\n")
+            contenido = f"{titulo.strip()}: {cuerpo.strip()}"
+            sb.table("conocimiento").upsert(
+                {
+                    "fuente": md.name,
+                    "titulo": titulo.strip(),
+                    "contenido": contenido,
+                    "embedding": generar_embedding(contenido, "RETRIEVAL_DOCUMENT"),
+                },
+                on_conflict="fuente,titulo",
+            ).execute()
+            total += 1
+    return {"fragmentos_indexados": total}
 
 
 def vincular_telegram(tg_token: str, chat_id: str, codigo: str) -> None:

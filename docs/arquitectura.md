@@ -23,6 +23,7 @@ USGS ──► /vigilar (api/main.py, Render) ──► Supabase (zonas_sismicas
   `alter table alertas_usuario enable row level security;` + políticas `select/insert/delete` con `using (auth.uid() = user_id)`; `zonas_sismicas` con `select` público y sin escritura.
 - RLS activo (SQL en `db/seguridad_y_telegram.sql`). Vínculo Telegram: la web crea un código en `vinculos_telegram`; el bot recibe `/start <código>` y guarda `chat_id`. `/vigilar` (service key) envía cada alerta al chat de su dueño y omite a quien no vinculó.
 
-## RAG
-- No hay RAG. El bot de Telegram inyecta toda la tabla `zonas_sismicas` en el prompt de Gemini (contexto fijo, no recuperación).
-- Propuesta: Supabase **pgvector** + embeddings de Gemini sobre una base de conocimiento (glosario, sismos históricos significativos por zona, guías de protección civil) y recuperar los 3-4 fragmentos más cercanos a la pregunta; los datos en vivo siguen entrando por SQL.
+## RAG (implementado 2026-11-24)
+- Base de conocimiento: `rag/conocimiento/*.md` (se parte por `## `). SQL: `db/rag_pgvector.sql` (tabla `conocimiento` con `vector(768)` y función `buscar_conocimiento`).
+- Indexar: `GET /rag/ingestar?key=<CRON_SECRET>` en Render (embeddings `gemini-embedding-001`, 768 dim). Repetir tras editar los `.md`.
+- Consulta: `procesar_consulta_telegram` embebe la pregunta, recupera los 3 fragmentos con similitud >= 0.55 y los añade al prompt de Gemini; los datos en vivo siguen entrando por SQL (RAG híbrido). Si falla, el bot responde sin RAG.
