@@ -475,7 +475,8 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             "no inventes nada fuera de esto y de los datos; si lo usas, añade al final una línea 📚 <i>Fuente: base de conocimiento</i>):\n"
             + "\n".join(f"- {f['contenido']}" for f in contexto_rag)
         )
-    if gemini_key:
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if gemini_key or openai_key:
         prompt = (
             "Eres un asistente que explica el riesgo sísmico a ciudadanos sin conocimientos técnicos. "
             "Responde en español claro usando EXCLUSIVAMENTE etiquetas HTML de Telegram (<b>negrita</b> e <i>cursiva</i>). "
@@ -501,12 +502,30 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         respuesta = ""
         ultimo_error = ""
         errores = []
+        if openai_key:
+            modelo_oa = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+            try:
+                r_oa = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    json={"model": modelo_oa, "messages": [{"role": "user", "content": prompt}]},
+                    timeout=40,
+                )
+                if r_oa.ok:
+                    respuesta = (r_oa.json()["choices"][0]["message"]["content"] or "").strip()
+                else:
+                    errores.append(f"openai:{modelo_oa} ({r_oa.status_code})")
+                    print(f"[openai] {modelo_oa} ({r_oa.status_code}): {r_oa.text[:120]}", flush=True)
+            except requests.RequestException as e:
+                errores.append(f"openai:{modelo_oa} ({type(e).__name__})")
+                print(f"[openai] {modelo_oa}: {type(e).__name__}", flush=True)
+
         modelos = [m.strip() for m in os.getenv("GEMINI_MODELS", "").split(",") if m.strip()] or [
             "gemini-flash-latest",
             "gemini-3.1-flash-lite-preview",
             "gemini-3-flash-preview",
         ]
-        for modelo in modelos:
+        for modelo in (modelos if (gemini_key and not respuesta) else []):
             try:
                 r = requests.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={gemini_key}",
@@ -534,7 +553,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         if not respuesta:
             respuesta = "⚠️ El asistente de IA tardó demasiado en responder. Inténtalo de nuevo en un minuto. (Probé: " + ", ".join(errores) + ")"
     else:
-        respuesta = "Falta configurar GEMINI_API_KEY en Render."
+        respuesta = "Falta configurar OPENAI_API_KEY o GEMINI_API_KEY en Render."
 
     if msg_id:
         r_final = requests.post(
