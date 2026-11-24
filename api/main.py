@@ -467,7 +467,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         msg_id=msg_id,
     )
 
-    contexto_rag = recuperar_conocimiento(texto_usuario, sb) if gemini_key else []
+    contexto_rag = recuperar_conocimiento(texto_usuario, sb)
     bloque_rag = ""
     if contexto_rag:
         bloque_rag = (
@@ -503,12 +503,17 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
         ultimo_error = ""
         errores = []
         if openai_key:
-            modelo_oa = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+            modelo_oa = os.getenv("OPENAI_MODEL", "gpt-6-luna")
             try:
                 r_oa = requests.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {openai_key}"},
-                    json={"model": modelo_oa, "messages": [{"role": "user", "content": prompt}]},
+                    json={
+                        "model": modelo_oa,
+                        "messages": [{"role": "user", "content": prompt}],
+                        **({"reasoning_effort": os.getenv("OPENAI_REASONING", "low")}
+                           if modelo_oa.startswith(("gpt-6", "gpt-5")) else {}),
+                    },
                     timeout=40,
                 )
                 if r_oa.ok:
@@ -585,6 +590,20 @@ EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embe
 
 
 def generar_embedding(texto: str, tarea: str) -> list:
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if openai_key:  # mismo proveedor para indexar y consultar (768 dim); reindexar si se cambia
+        r = requests.post(
+            "https://api.openai.com/v1/embeddings",
+            headers={"Authorization": f"Bearer {openai_key}"},
+            json={
+                "model": os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small"),
+                "input": texto[:8000],
+                "dimensions": 768,
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()["data"][0]["embedding"]
     r = requests.post(
         EMBED_URL,
         params={"key": os.environ["GEMINI_API_KEY"]},
