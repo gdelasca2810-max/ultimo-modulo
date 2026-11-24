@@ -21,7 +21,7 @@ USGS ──► /vigilar (api/main.py, Render) ──► Supabase (zonas_sismicas
 - La web usa `signUp` / `signInWithPassword`; los usuarios viven en `auth.users`. Cada alerta guarda `user_id`.
 - Que cada usuario vea solo lo suyo depende de **RLS** en `alertas_usuario` (no está en el repo; verificar en el dashboard). SQL recomendado:
   `alter table alertas_usuario enable row level security;` + políticas `select/insert/delete` con `using (auth.uid() = user_id)`; `zonas_sismicas` con `select` público y sin escritura.
-- `/vigilar` usa la service key (salta RLS) y hoy envía **todas** las alertas al único `TELEGRAM_CHAT_ID` (el dueño). Para que cada usuario reciba las suyas hay que guardar su `telegram_chat_id` en la alerta/perfil.
+- RLS activo (SQL en `db/seguridad_y_telegram.sql`). Vínculo Telegram: la web crea un código en `vinculos_telegram`; el bot recibe `/start <código>` y guarda `chat_id`. `/vigilar` (service key) envía cada alerta al chat de su dueño y omite a quien no vinculó.
 
 ## RAG
 - No hay RAG. El bot de Telegram inyecta toda la tabla `zonas_sismicas` en el prompt de Gemini (contexto fijo, no recuperación).

@@ -6,6 +6,9 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
+## 2026-11-24 — Telegram por usuario y RLS
+- Tabla `vinculos_telegram`, `/start <código>` en el bot, `/bot-info`, botón en la web; `/vigilar` envía a cada dueño. RLS ejecutado en Supabase. Desplegado (Render + `npx vercel --prod`) y verificado: `chats_notificados: 1`.
+
 ## 2026-11-24 — Mensaje Telegram, estructura y docs
 - `api/main.py`: `construir_mensaje_alerta` (lenguaje simple, plurales), caso sin sismos <500 km = AVISO POR MODELO, `<` escapado. CSV movido a `data/`. Nuevos `docs/arquitectura.md` (usuarios/RLS/RAG) y `docs/todo.md`. Pendientes ahora en `docs/todo.md`.
 
