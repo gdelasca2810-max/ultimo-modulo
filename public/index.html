@@ -423,7 +423,7 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
         <p>Debajo de cada etiqueta indicamos <b>qué impulsa</b> el número: sismos cercanos, sismos de profundidad intermedia o solo el cálculo estadístico del modelo.</p></div>
       <div><h4>Riesgo normal</h4><p>La probabilidad que esa región tiene, en una semana cualquiera, de un terremoto fuerte (magnitud 6,5 o más), según su historia.</p></div>
       <div><h4>Radio ≤ 200 km</h4><p>Sismos de cualquier profundidad ocurridos en las últimas 96 horas (4 días) a menos de 200 km del centro de la región, con cuántos son fuertes (M4,5+).</p></div>
-      <div><h4>Radio ≤ 500 km</h4><p>Sismos de cualquier profundidad en las últimas 96 horas a menos de 500 km del centro. <b>Incluye</b> los de ≤ 200 km.</p></div>
+      <div><h4>Radio ≤ 500 km</h4><p>Sismos de cualquier profundidad en las últimas 96 horas a menos de 500 km del centro. <b>Incluye</b> los de ≤ 200 km. La resta (≤ 500 km menos ≤ 200 km) son los sismos del rango 200–500 km: regionales, no inmediatos.</p></div>
       <div><h4>Profundidad intermedia (70–150 km)</h4><p>Sismos a 70–150 km bajo tierra (profundidad intermedia, no profunda) dentro de los 500 km de la región, en las últimas 96 horas. Donde una placa se hunde bajo otra; se sienten menos, pero indican tensión. Se cuentan <b>dentro</b> del radio de 500 km, no del de 200 km.</p></div>
       <div><h4>¿Por qué un número alto no es alarmante?</h4><p>Si una región casi nunca tiene terremotos, multiplicar su riesgo por 10 sigue dando un riesgo pequeño. Por eso mostramos siempre la probabilidad real junto al «veces lo normal».</p></div>
     </div>
@@ -473,7 +473,8 @@ function motivoRiesgo(m, c200, c500, prof) {
   const partes = [];
   if (c200 > 0) partes.push(pl(c200, 'sismo a ≤ 200 km', 'sismos a ≤ 200 km'));
   if (prof > 0) partes.push(pl(prof, 'sismo de profundidad intermedia', 'sismos de profundidad intermedia'));
-  if (!partes.length && c500 > 0) partes.push(pl(c500, 'sismo a ≤ 500 km', 'sismos a ≤ 500 km'));
+  const anillo = Math.max(0, c500 - c200); /* sismos entre 200 y 500 km */
+  if (anillo > 0) partes.push(`${pl(anillo, 'sismo', 'sismos')} en el rango de 200–500 km${c200 === 0 ? ' (ninguno a ≤ 200 km)' : ''}`);
   if (!partes.length) return 'Sin sismos cercanos en 96 h: el alza viene solo del cálculo del modelo';
   return `Impulsado por ${partes.join(' y ')} (96 h)`;
 }
@@ -634,7 +635,7 @@ function renderizarTabla() {
         <td data-label="Riesgo normal"><div><b>${fmt(tasa * 100, 2)} %</b><span class="sub-data">${anios}</span>
           <div class="pbar" aria-hidden="true"><i style="width:${Math.max(4, (tasa / maxTasa) * 100)}%"></i></div></div></td>
         <td data-label="Radio ≤ 200 km"><div><b>${total200}</b> ${total200 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">en 96 h · ${mod200} fuertes (M4.5+)</span></div></td>
-        <td data-label="Radio ≤ 500 km"><div><b>${reg500}</b> ${reg500 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">en 96 h (incluye los de ≤ 200 km)</span></div></td>
+        <td data-label="Radio ≤ 500 km"><div><b>${reg500}</b> ${reg500 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">en 96 h · ${Math.max(0, reg500 - total200)} entre 200 y 500 km</span></div></td>
         <td data-label="Profundidad intermedia"><div><b>${prof}</b><span class="sub-data">${prof > 0 ? 'a 70–150 km de profundidad, dentro de 500 km' : 'ninguno en 96 h'}</span></div></td>
       </tr>`;
   }).join('');

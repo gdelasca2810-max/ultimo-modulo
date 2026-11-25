@@ -183,10 +183,19 @@ def construir_mensaje_alerta(zona, estado_txt, resumen_simple, frec_txt, info, u
     else:
         cerca_txt = f"{_plural(cercanos, 'temblor cercano', 'temblores cercanos')} (a menos de 200 km"
         cerca_txt += f", {_plural(m45_plus, 'fuerte', 'fuertes')} de M4.5+)" if m45_plus else ")"
-    region_txt = (
-        "ninguno a menos de 500 km" if regionales == 0
-        else f"{_plural(regionales, 'sismo', 'sismos')} a menos de 500 km (incluye los de menos de 200 km)"
-    )
+    anillo = max(0, regionales - cercanos)  # sismos entre 200 y 500 km
+    if regionales == 0:
+        region_txt = "ninguno a menos de 500 km"
+    elif cercanos == 0:
+        region_txt = (
+            f"{_plural(regionales, 'sismo', 'sismos')} a menos de 500 km, "
+            "todos en el rango de 200–500 km (ninguno a menos de 200 km)"
+        )
+    else:
+        region_txt = (
+            f"{_plural(regionales, 'sismo', 'sismos')} a menos de 500 km "
+            f"({anillo} en el rango de 200–500 km)"
+        )
     prof_txt = (
         "ninguno de profundidad intermedia (70–150 km)" if profundos == 0
         else f"{_plural(profundos, 'sismo', 'sismos')} de profundidad intermedia (70–150 km, dentro de los 500 km)"
@@ -194,7 +203,10 @@ def construir_mensaje_alerta(zona, estado_txt, resumen_simple, frec_txt, info, u
     if cercanos == 0 and regionales == 0:
         impulsor = "Sin sismos cercanos en 96 h: el valor viene solo del cálculo estadístico del modelo."
     elif cercanos == 0:
-        impulsor = "Sin sismos a menos de 200 km: el valor se apoya en actividad regional o de profundidad intermedia."
+        impulsor = (
+            f"Sin sismos a menos de 200 km: el valor se apoya en {_plural(anillo, 'sismo', 'sismos')} "
+            "regionales del rango 200–500 km y/o en sismos de profundidad intermedia."
+        )
     else:
         impulsor = "Impulsado por actividad cercana (menos de 200 km) de las últimas 96 horas."
     return (
@@ -694,7 +706,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             f"- {nombre}: estado={estado_txt}, prob_7d={prob_val*100:.2f}%, "
             f"habitual_7d={base_val*100:.2f}% ({frec_txt}), "
             f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} moderados M4.5+ y {loc200_sin45} leves <M4.5), "
-            f"sismos_regionales_500km={loc500_con} (incluye los de 200 km), "
+            f"sismos_regionales_500km={loc500_con} (incluye los de 200 km; {max(0, loc500_con - loc200_con)} están en el rango 200–500 km), "
             f"sismos_prof_intermedia_70_150km_dentro_de_500km={prof70_150}"
         ))
 
@@ -732,7 +744,7 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             "⚠️ <b>Probabilidad de terremoto fuerte (M6.5+ esta semana):</b> <b>[prob_7d]</b> — En esta zona lo habitual en una semana tranquila es [habitual_7d] ([equivalencia en semanas]), por lo que hoy está a <b>[multiplicador]x</b> de su nivel normal.\n"
             "📊 <b>¿En qué se basa este resultado? (últimas 96 horas):</b>\n"
             "• Sismos cercanos (&lt;200 km): [sismos_cercanos_200km] ([moderados M4.5+] moderados M4.5+ y [leves] leves)\n"
-            "• Sismos en la región (&lt;500 km, incluye los cercanos): [sismos_regionales_500km]\n"
+            "• Sismos en la región (&lt;500 km, incluye los cercanos): [sismos_regionales_500km] — si los cercanos son 0, aclara que esos sismos están en el rango de 200–500 km, no a menos de 200 km\n"
             "• Sismos de profundidad intermedia (70–150 km, dentro de 500 km): [sismos_prof_intermedia_70_150km_dentro_de_500km]\n"
             "💡 <b>En palabras simples:</b> [1 o 2 frases muy claras y coherentes con los números reales]\n\n"
             "Si el usuario pregunta por varias zonas o por las zonas más activas, muestra el Top 3 ordenado por mayor probabilidad real (prob_7d) usando ese mismo formato.\n\n"
