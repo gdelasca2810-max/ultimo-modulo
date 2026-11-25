@@ -6,6 +6,11 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
+## 2026-11-25 — Etiquetas de actividad coherentes y fallo del cron
+- Web y Telegram usan la misma lógica de estado. Columnas renombradas: Radio ≤ 200 km, Radio ≤ 500 km (nueva) y Profundidad intermedia (70–150 km, dentro de 500 km). Cada fila y mensaje explica qué impulsa el número. Commit 20b7443.
+- Cron de las 16 h falló («response larger than the allowed limit»): hipótesis, arranque en frío de Render. `/vigilar` solo pesa ~194 B.
+- Pendiente: job de calentamiento a las 15:50 en cron-job.org, definir `CRON_SECRET` en Render, confirmar Render Live.
+
 ## 2026-11-24 — Web en lenguaje simple y docs del modelo
 - Web reescrita (riesgo hoy, top 3, pasos, tabla móvil), `db/zonas_riesgo_hoy.sql`, `/vigilar` guarda `actualizado_en`. Nuevo `docs/modelo_ml.md`; `docs/todo.md` completado.
 

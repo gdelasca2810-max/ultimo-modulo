@@ -7,6 +7,7 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 - Deploy frontend: Vercel (`vercel.json`, publica `public/`). Detalle en `docs/deploy/vercel.md`.
 - Deploy backend: Render vía Blueprint `render.yaml` (estático, `public/`, autodeploy). URL: https://ultimo-modulo.onrender.com. Detalle en `docs/deploy/render.md`.
 - Backend real: `api/main.py` (FastAPI + `modelo_sismos.joblib`), `/vigilar?key=CRON_SECRET` → Supabase + Telegram. Frontend en Vercel: https://ultimo-modulo.vercel.app.
+- Métricas en 96 h: `loc200` (≤200 km), `loc500` (≤500 km, incluye las de 200) y `prof70_150` (profundidad intermedia, dentro de 500 km). Web y Telegram comparten la misma lógica de etiquetas. Detalle en `docs/arquitectura.md`.
 - No commitear `.github/workflows/vigilancia_sismica.yml` (GitHub rechaza el push).
 <!-- Rellenar: qué es el proyecto, stack, comandos esenciales. -->
 

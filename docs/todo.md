@@ -23,7 +23,7 @@
 - [ ] Probar la web con sesión iniciada en móvil (bloque de alertas, Telegram, pasos).
 - [ ] Alertas de prueba a 0.5x: dejar solo las que se quieran mantener.
 - [ ] Fichas de terremotos famosos para el RAG (Tohoku 2011, Chile 2010, Nepal 2015, Turquía 2023) en `rag/conocimiento/`.
-- [ ] Comprobar que el cron horario corre (la web mostró datos de hace 26 h).
+- [ ] Comprobar que el cron horario corre (la web mostró datos de hace 26 h). El 2026-11-25 el job de las 16 h falló por respuesta demasiado grande (posible arranque en frío de Render): añadir job de calentamiento a las 15:50 contra `/docs`, activar reintentos y definir `CRON_SECRET` en Render.
 - [ ] Regenerar `data/zona_dia_11a.csv` o documentar cómo obtenerlo para poder reentrenar.
 
 ## Presentación

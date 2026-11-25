@@ -28,6 +28,10 @@ USGS ──► /vigilar (api/main.py, Render) ──► Supabase (zonas_sismicas
 - Indexar: `GET /rag/ingestar?key=<CRON_SECRET>` en Render (embeddings `gemini-embedding-001`, 768 dim; `RAG_EMBEDDINGS=openai` usa `text-embedding-3-small`, y obliga a reindexar). Repetir tras editar los `.md`.
 - Consulta: `procesar_consulta_telegram` embebe la pregunta, recupera los 3 fragmentos con similitud >= 0.55 y los añade al prompt de Gemini; los datos en vivo siguen entrando por SQL (RAG híbrido). Si falla, el bot responde sin RAG.
 
+## Métricas de actividad (ventana de 96 h, fuente USGS ≥ M2.5)
+- `loc200_n96_con`: sismos a ≤ 200 km del centro (`sin45` = leves < M4.5). `loc500_n96_con`: a ≤ 500 km, incluye los anteriores. `lat_n96_prof70_150`: profundidad intermedia (70–150 km) **dentro de 500 km**.
+- Web (`nivelRiesgo`) y Telegram (`describir_nivel_usuario`) usan la misma lógica; sin sismos cerca la etiqueta es «Alza del modelo / solo estadística» y se indica qué impulsa el valor.
+
 ## Modelos del bot de Telegram
 - Orden: OpenAI (`OPENAI_MODEL`, por defecto `gpt-6-luna`, `OPENAI_REASONING=low`) → Gemini (`GEMINI_MODELS`, lista separada por comas). Cada fallo se registra como `[openai]`/`[gemini]` en el log de Render.
 - Variables en Render: `OPENAI_API_KEY`, `GEMINI_API_KEY`, opcionales las anteriores. Probado 2026-11-24: Luna responde; embeddings de OpenAI dieron «no credits», los de Gemini funcionan.
