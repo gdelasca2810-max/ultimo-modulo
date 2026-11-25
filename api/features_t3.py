@@ -7,9 +7,10 @@ Reglas (generador histórico recuperado, ver docs/CONTINUIDAD_ML.md):
 - catálogo M>=4.0, type=earthquake; declustering Gardner-Knopoff (réplicas fuera donde se indica);
 - ventana de features [t-96h, t);
 - loc200_n96_con: <=200 km al centroide de la caja destino, M>=4.0, prof. 5..40 km;
-- loc200_n96_sin45: igual con M>=4.5 y SIN réplicas (el nombre no significa «M<4.5»);
+- loc200_n96_sin45: igual (M>=4.0, 5..40 km, <=200 km) pero SIN réplicas Gardner-Knopoff. Decisión 2026-11-25:
+  no existe umbral M4.5; todo es M>=4.0. El nombre «sin45» se conserva solo por compatibilidad con Supabase/API;
 - loc500_n96_con: <=500 km, M>=4.0, prof. 5..40 km;
-- lat_n96_prof70_150: cajas laterales, M>=4.5, 70<prof<=150.
+- lat_n96_prof70_150: cajas laterales, M>=4.0, 70<prof<=150.
 """
 from __future__ import annotations
 
@@ -19,8 +20,11 @@ from pathlib import Path
 import numpy as np
 
 W96 = 96 * 3600
-# Un mainshock GK puede "cubrir" réplicas hasta ~1064 días (M9); con holgura para la ventana de 96 h.
-HISTORIA_GK_DIAS = 1100
+# Un mainshock GK cubre réplicas hasta ~1064 días (M9), pero las réplicas forman CADENAS (un M4,4 es réplica de un
+# M4,9 que es réplica de un M5,8 que es réplica de un M7...): con 1100 días se perdía el eslabón más antiguo
+# (1 valor de 2000 distinto del entrenamiento). 2600 días (~7 años) cubre cadenas de varios niveles.
+HISTORIA_GK_DIAS = 2600
+TRAMO_HISTORIA_DIAS = 800  # USGS limita cada consulta a 20000 eventos; M>=4.8 son ~5000/año
 UMBRAL_MAINSHOCK_GK = 4.8
 ROOT = Path(__file__).resolve().parent.parent
 ZONAS_PATH = ROOT / "config" / "zonas_t3_historicas.json"
@@ -95,9 +99,9 @@ def mascaras_zona(definicion: dict, lat: np.ndarray, lon: np.ndarray, dep: np.nd
         "lat_todo": m_lat & (mag >= 4.0),
         "som": som,
         "prof": m_lat & (mag >= 4.0) & (dep > 40),
-        "prof70": m_lat & (mag >= 4.5) & (dep > 70) & (dep <= 150),
+        "prof70": m_lat & (mag >= 4.0) & (dep > 70) & (dep <= 150),
         "local": (d <= 200) & (mag >= 4.0) & somero,
-        "local_sin": (d <= 200) & (mag >= 4.5) & somero & ~aft,
+        "local_sin": (d <= 200) & (mag >= 4.0) & somero & ~aft,
         "regional": (d <= 500) & (mag >= 4.0) & somero,
     }
 

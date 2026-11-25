@@ -25,14 +25,16 @@ import criterios_despliegue as cd
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "candidate" / "zona_dia_t3_reconstruido.csv"
-VERSION = "v5_t3_multiplicativo"
-SALIDA = Path(__file__).resolve().parent / "modelo_sismos_v5.joblib"
+VERSION = "v6_t3_m40_multiplicativo"
+SALIDA = Path(__file__).resolve().parent / "modelo_sismos_v6.joblib"
 TARGET = "y_M65_7d"
 # Features reproducibles por /vigilar con la misma definición (api/features_t3.py).
 FEATURES = ["loc200_n96_sin45", "loc200_n96_con"]
-# Escalones fijados a priori (no tuneados con el test): la señal medida está en la cola de actividad
+# Escalones fijados con datos de entrenamiento (no tuneados con el test): la señal medida está en la cola de actividad
 # local, no en una relación lineal. Cada columna es un indicador 0/1 con coeficiente >= 0.
-ESCALONES = [("loc200_n96_sin45", 3), ("loc200_n96_sin45", 5), ("loc200_n96_con", 5)]
+# Umbrales fijados mirando SOLO el entrenamiento (<=2023): razón observada/esperada 1,9x (3-4), 6,8x (5-7),
+# 38x (8+) para sin45 (M4,0+ sin réplicas) y 2,2x (8-11) / 5,6x (12+) para con.
+ESCALONES = [("loc200_n96_sin45", 3), ("loc200_n96_sin45", 5), ("loc200_n96_sin45", 8), ("loc200_n96_con", 8)]
 PESO_PRIOR = 60.0
 LAMBDAS = [0.01, 0.1, 1.0, 5.0, 20.0]
 

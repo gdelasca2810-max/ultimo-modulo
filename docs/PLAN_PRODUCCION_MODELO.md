@@ -1,82 +1,94 @@
 # Plan de producción del modelo de riesgo M6.5+ a 7 días
 
-Fecha: 2026-11-25. Estado: **modelo v5 listo en el árbol de trabajo, sin commit ni push** (el modelo v2 anterior sigue en el repo remoto hasta que se haga el push).
+Fecha: 2026-11-25. Modelo activo: **v6 (M4,0)**, `api/modelo_sismos_v6.joblib`. Decisión del usuario (2026-11-25): **no existe umbral M4,5**; todas las variables usan M≥4,0.
 
 ## 1. Qué estaba mal y qué se arregló
 
 | Problema | Arreglo |
 |---|---|
-| El modelo v2 usaba `media_96h_zona` y `p90_con_11a` (estadísticos de 2016–2026, **fuga temporal**) | v5 no las usa. Solo cuatro conteos sísmicos de las últimas 96 h y la tasa histórica de la zona |
-| `/vigilar` calculaba las variables distinto al entrenamiento (M≥2,5, sin filtro de profundidad, sin réplicas, radio al punto de `ZONAS_COORDS`) | `api/features_t3.py` es la **única** implementación (M≥4,0, 5–40 km, centroide de la caja destino, cajas laterales, Gardner–Knopoff). La usan el entrenamiento (`scripts/reconstruir_t3_usgs.py`) y `/vigilar` |
-| Una zona (Japón Nankai/Kyushu) tenía tasa 0,0 | La tasa de cada zona es una media suavizada hacia la global (peso 60) con todo el historial |
+| El modelo v2 usaba `media_96h_zona` y `p90_con_11a` (estadísticos de 2016–2026: **fuga temporal**) | v6 no las usa: solo conteos sísmicos de las últimas 96 h y la tasa histórica de la zona |
+| `/vigilar` calculaba las variables distinto al entrenamiento (M≥2,5, sin filtro de profundidad, sin réplicas, radio al punto de `ZONAS_COORDS`) | `api/features_t3.py` es la **única** implementación (M≥4,0, 5–40 km, centroide de la caja destino, cajas laterales, Gardner–Knopoff). La usan el entrenamiento y `/vigilar` |
+| Una zona (Japón Nankai/Kyushu) tenía tasa 0,0 | Tasa suavizada hacia la global (peso 60) con todo el historial |
 
-Verificado con datos reales: con solo lo que `/vigilar` descargaría, las 4 features coinciden con el dataset de entrenamiento en **2 000 de 2 000** valores (25 fechas × 20 zonas × 4 variables). El dataset regenerado tras el refactor es idéntico al anterior.
+## 2. Definición de las variables (nombres de columna conservados por compatibilidad)
 
-## 2. Modelo v5 (`api/modelo_sismos_v5.joblib`, `api/train_t3_multiplicativo.py`)
+Ventana `[t−96 h, t)`, sismos M≥4,0 de 5–40 km de profundidad salvo indicación:
+- `loc200_n96_con`: a ≤ 200 km del centroide de la caja destino (incluye réplicas).
+- `loc200_n96_sin45`: igual pero **sin réplicas** (Gardner–Knopoff). El nombre es histórico: ya no hay umbral M4,5.
+- `loc500_n96_con`: a ≤ 500 km.
+- `lat_n96_prof70_150`: M≥4,0 a 70–150 km de profundidad en las cajas laterales.
+- Target `y_M65_7d`: M≥6,5 sin réplicas en la caja destino en `[t, t+7 d)` (sin cambios).
 
-`logit(p) = logit(tasa_zona) + sesgo + Σ pesos de escalones activados` — la «tasa normal» de la zona multiplicada por un factor que sube cuando hay actividad local real:
+Nota: `loc200_n96_sin45` y `lat_n96_prof70_150` ya **no** coinciden con el CSV histórico original (que usaba M4,5): 96 % y 52 % de igualdad. El generador histórico se conserva como referencia de `loc200_n96_con`, `loc500_n96_con` y los targets (≥ 99,5 %).
 
-- 3 o más sismos M4,5+ **sin réplicas** a ≤ 200 km en 96 h,
-- 5 o más sismos M4,5+ sin réplicas,
-- 5 o más sismos M4,0+ a ≤ 200 km.
+Aún existen M4,5 fuera del cálculo de riesgo: el mapa de «sismos fuertes de la semana» (feed USGS 4.5_week) y la búsqueda histórica del bot (base M4,5+ de Supabase). No intervienen en las probabilidades.
 
-**Dos ajustes distintos (importante):**
+## 3. Modelo v6 (`api/train_t3_multiplicativo.py`)
 
-| | Pesos de los 3 escalones | Multiplicador máximo | Uso |
+`logit(p) = logit(tasa_zona) + sesgo + Σ pesos de los escalones activados`: la «tasa normal» de la zona multiplicada por un factor que sube con la actividad local real.
+
+Escalones (umbrales fijados mirando solo el entrenamiento ≤ 2023: razón observada/esperada 1,9× con 3–4, 6,8× con 5–7 y 38× con ≥ 8 sismos sin réplicas): `sin45 ≥ 3`, `sin45 ≥ 5`, `sin45 ≥ 8` y `con ≥ 8`. Regularización λ = 5 elegida por validación cruzada por años de 2016–2023.
+
+**Dos ajustes distintos:**
+
+| | Pesos (3 / 5 / 8 sin réplicas, 8 total) | Uso |
+|---|---|---|
+| **Evaluado** (ajuste ≤ 2023-12-24) | 0,66 / 0,84 / 0,84 / 0,77 | produce las métricas de abajo |
+| **Desplegado** (reajuste con 2016–2026) | 0,97 / 0,87 / 0,83 / 0,74 | `api/modelo_sismos_v6.joblib` |
+
+Multiplicadores desplegados (ejemplos): 3 sismos sin réplicas → **2,6×**; 5 → 6,2×; 5 sin réplicas y 8 en total → 13×; 8 sin réplicas → 30×. **Las métricas de test corresponden al modelo evaluado, no al desplegado** (este último no puede validarse fuera de muestra con estos datos).
+
+Test 2024-01-08 en adelante (19 860 filas, 299 positivos) frente a la tasa histórica por zona:
+
+| Métrica | v6 evaluado | Baseline | IC95 de la diferencia (bootstrap por meses) |
 |---|---|---|---|
-| Modelo **evaluado** (ajuste ≤ 2023-12-24) | 0,29 / 0,32 / 0,31 | ≈ 2,5× | produce las métricas de test de abajo |
-| Modelo **desplegado** (reajuste con todo 2016–2026) | 0,56 / 0,48 / 0,57 | ≈ 4,9× | `api/modelo_sismos_v5.joblib` |
+| AUC | 0,64591 | 0,63209 | [−0,0013, +0,0384] |
+| AP | 0,03315 | 0,02812 | [−0,0002, +0,0283] |
+| Brier | 0,01480 | 0,01484 | [−0,00013, +0,00002] |
 
-El reajuste incorpora los casos de cola de 2024–2026 (con ≥ 3 sismos locales, 8 positivos en 29 filas), así que los factores son mayores. **Las métricas de test corresponden al modelo evaluado, no al desplegado**: el desplegado no puede validarse fuera de muestra con estos datos. Con los pesos desplegados: ≥ 3 sismos M4,5+ sin réplicas por sí solos dan ≈ 1,7×, y ≥ 5 sismos M4,0+ por sí solos también ≈ 1,7×; **llegan a 3,1× cuando se cumplen ambas cosas (≥ 3 M4,5+ sin réplicas y ≥ 5 M4,0+ en total a ≤ 200 km)** y a 4,9× con ≥ 5 M4,5+ sin réplicas. Con los pesos evaluados solo se llegaba a 2× con los tres escalones a la vez. Si se prefiere la opción conservadora, basta copiar los pesos del modelo evaluado al artefacto (decisión de producto pendiente).
+**Lectura honesta:** los tres números mejoran, pero ningún intervalo excluye el cero: **no se demuestra una mejora estadística, y tampoco hay deterioro** (los criterios exigen lo segundo). La señal está en muy pocos episodios.
 
-Los escalones se fijaron a priori a partir de la señal medida (tasa observada/esperada de 10–30× en la cola, en train y en test) y el único hiperparámetro (λ) se eligió con validación cruzada por años de 2016–2023. El test 2024+ no se usó para elegir nada.
+### Qué muestran las fechas (≥ 5 sismos M4,0+ sin réplicas a ≤ 200 km en 96 h)
+10 episodios en 10,7 años y 20 zonas; 2 fueron seguidos de un M6,5+ en la caja en los 7 días siguientes (20 %, frente a ~2–3 % de una semana cualquiera): **Sandwich del Sur (2021-08-13, 298 sismos totales tras el M7,5/M8,1)** y **Kamchatka (2025-07-31, 63 totales, tras el M8,8)**. Son secuelas de terremotos gigantes, no enjambres previos a un terremoto sin aviso. Los otros 8 episodios (Banda/Timor 2016, Japón NE 2016 y 2025, Sandwich 2022, Taiwán 2022, Mindanao 2026 ×2, México 2026) no tuvieron M6,5+. n = 10 es muy poco: tratar los multiplicadores altos (≥ 6×) como orientativos.
 
-Test 2024-01-08 en adelante (19 860 filas, 299 positivos), frente a la tasa histórica por zona:
+## 4. Alertas
 
-| Métrica | v5 | Baseline | IC95 de la diferencia (bootstrap por meses) |
-|---|---|---|---|
-| AUC | 0,64641 | 0,63209 | [+0,0006, +0,0363] |
-| AP | 0,02917 | 0,02812 | [+0,00003, +0,00256] |
-| Brier | 0,01482 | 0,01484 | [−0,00004, 0,0000] |
+- Regla: multiplicador ≥ umbral del usuario **y** «enjambre» = multiplicador ≥ 2, probabilidad ≥ 2,5 % y ≥ 3 sismos M4,0+ sin réplicas a ≤ 200 km.
+- Con los pesos desplegados el 2× se alcanza con **3 sismos M4,0+ sin réplicas a ≤ 200 km en 96 h** (2,6×). Para alertar, la probabilidad debe además llegar a 2,5 %: una zona de tasa muy baja (p. ej. Nankai, 0,2 %) no alerta por un multiplicador artificial.
+- Habrá **menos alertas que con el modelo antiguo** (gran parte de sus «2×» eran fuga/desajuste).
 
-La mejora es **real pero modesta**: la señal está en una cola rara (en test, ~30 filas con ≥ 3 sismos locales). Por eso el multiplicador de v5 es ≈ 1,0× casi siempre y solo sube con un enjambre local verificable.
+## 5. Criterios obligatorios (cumplidos) — `api/criterios_despliegue.py`
 
-## 3. Alertas (qué cambia respecto a antes)
+Brier no empeora ✔ · AUC y AP no empeoran ✔ · bootstrap por bloques sin deterioro significativo ✔ · features idénticas en entrenamiento y `/vigilar` ✔ · sin fuga ni features prohibidas ✔ · geometría documentada ✔.
 
-- Regla de alerta: multiplicador ≥ umbral del usuario **y** «enjambre» = multiplicador ≥ 2, probabilidad ≥ 2,5 % y ≥ 3 sismos M4,5+ sin réplicas a ≤ 200 km.
-- Con los pesos desplegados el umbral 2× se alcanza con **≥ 5 sismos M4,0+ a ≤ 200 km, de los cuales ≥ 3 sean M4,5+ sin réplicas** (3,1×; 4,9× si los M4,5+ sin réplicas son ≥ 5). Habrá **menos alertas que antes**: los «2×» del modelo v2 salían en buena parte de la fuga y del desajuste de variables. Una zona de tasa muy baja (p. ej. Nankai, 0,2 %) nunca alerta por un multiplicador artificial: 2× sigue siendo < 2,5 %.
-- Los textos de la web y de Telegram ya describen las columnas con su definición real (M4,0+ someros; M4,5+ sin réplicas; profundidad intermedia en las zonas laterales).
+Identidad producción/entrenamiento medida con datos reales: **2 000 de 2 000** valores (25 fechas × 20 zonas × 4 variables) usando solo lo que `/vigilar` descarga. Con 1 100 días de historia hubo un caso distinto: las réplicas forman cadenas (M4,4 ← M4,9 ← M5,8 ← mayor anterior), así que la historia de mainshocks se amplió a **2 600 días** (descarga por tramos de 800 días por el límite de 20 000 eventos de USGS).
 
-## 4. Criterios obligatorios (cumplidos por v5) — `api/criterios_despliegue.py`
+**Limitación conocida (no bloquea):** las cajas de las zonas están marcadas «DEFINIDA POR CLAUDE - revisar» y **no están validadas por un sismólogo** (`config/zonas_t3_estado_validacion.json`).
 
-Brier no empeora ✔ · AUC y AP no empeoran ✔ · bootstrap por bloques sin deterioro significativo ✔ · features idénticas en entrenamiento y `/vigilar` ✔ (`tests/test_features_t3.py` + verificación con datos reales) · sin features prohibidas ni fuga ✔ · geometría documentada ✔ (`config/zonas_t3_historicas.json`).
+## 6. Rendimiento de `/vigilar`
 
-**Limitación conocida (no bloquea):** las cajas de las zonas están marcadas «DEFINIDA POR CLAUDE - revisar» y **no están validadas por un sismólogo** (`config/zonas_t3_estado_validacion.json`). Presentar las zonas como regiones aproximadas.
+Descarga ~23 000 eventos M≥4,8 de historia + los M≥4,0 de 96 h. Primera ejecución (o tras 12 h / reinicio de Render): ~10 s en local, probablemente 15–25 s en Render. Después, la historia está en memoria y solo se pide lo nuevo (~2 s). Render gratuito duerme tras 15 min sin tráfico y pierde la caché: el primer `/vigilar` tras un arranque en frío puede rozar el límite de ~30 s de cron-job.org.
 
-## 5. Plan B: baseline por zona
+## 7. Plan B: baseline por zona
 
-`MODO_PREDICCION=baseline_zona` en Render → `/predict` devuelve la tasa suavizada (`api/baseline_tasa_zona.json`, regenerable con `scripts/generar_baseline_zona.py`) con multiplicador 1,0 y sin enjambre: ninguna alerta Telegram. Quitar la variable lo desactiva. Úsalo si un día se duda de v5. `MODELO_ARTEFACTO` permite elegir otro archivo de modelo (el v2 antiguo **no** es compatible con las features T3 en vivo).
+`MODO_PREDICCION=baseline_zona` en Render → `/predict` devuelve la tasa suavizada (`api/baseline_tasa_zona.json`) con multiplicador 1,0 y sin enjambre: ninguna alerta Telegram. Quitar la variable lo desactiva. `MODELO_ARTEFACTO` permite elegir otro archivo de modelo (el v2 antiguo **no** es compatible con las features T3 en vivo).
 
-## 6. Activación y orden de despliegue
+## 8. Despliegue
 
-1. Revisar `git diff` (incluye cambios previos del usuario sin commit en `api/main.py`).
-2. Commit **sin** `.github/workflows/vigilancia_sismica.yml`. Hay que subir `api/modelo_sismos_v5.joblib`, `api/features_t3.py`, `config/zonas_t3_historicas.json`, `api/baseline_tasa_zona.json` y `public/index.html`.
-3. Render autodesplegará la API; después `npx vercel --prod` para la web.
-4. Comprobar `/health` (versión `v5_t3_multiplicativo`) y lanzar `/vigilar` una vez. Cada ejecución descarga unos 1,5 MB de USGS y tarda ~5 s más que antes.
-5. No cambia el contrato JSON de `/health`, `/predict` ni `/vigilar`, ni las tablas de Supabase. **Cambia el significado** de `loc200_n96_con/sin45`, `loc500_n96_con` y `lat_n96_prof70_150` en `zonas_sismicas`: los valores antiguos (M≥2,5) se sobrescriben en la primera ejecución.
+Cambia el **significado** (no los nombres) de `loc200_n96_con/sin45`, `loc500_n96_con` y `lat_n96_prof70_150` en `zonas_sismicas`: la primera ejecución de `/vigilar` sobrescribe los valores antiguos. No cambian los contratos JSON de `/health`, `/predict`, `/vigilar` ni las tablas.
 
-## 7. Pendientes que no cubre esto
+## 9. Pendientes
 
 - `agente/vigilante.py` (cron de GitHub Actions, no usado) y `mcp/server.py` siguen con las definiciones antiguas.
 - Sumatra/Andaman sigue sin soporte (sin caja ni datos).
 - Validación sismológica de las cajas.
-- Nueva fecha de reentrenamiento: `python scripts/reconstruir_t3_usgs.py` + `python api/train_t3_multiplicativo.py`.
+- Si se desea, limitar el multiplicador máximo (p. ej. 10×) por cautela; hoy llega a 30×.
 
-## 8. Comandos
+## 10. Comandos
 
 ```text
 python -m unittest discover -s tests -v          # 31 pruebas (FastAPI compatible con starlette)
 python scripts/reconstruir_t3_usgs.py             # regenera el dataset (sin red, usa data/raw)
-python api/train_t3_multiplicativo.py             # evalúa, aplica criterios y escribe api/modelo_sismos_v5.joblib
+python api/train_t3_multiplicativo.py             # evalúa, aplica criterios y escribe api/modelo_sismos_v6.joblib
 python scripts/generar_baseline_zona.py           # regenera el baseline
 ```

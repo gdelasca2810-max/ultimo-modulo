@@ -81,3 +81,10 @@ Para desplegar cualquier modelo T3 sería necesario adaptar `/vigilar` para calc
 - `api/features_t3.py` es ahora la única implementación de las features; `/vigilar` la usa (2 000/2 000 valores idénticos al dataset de entrenamiento en 25 fechas).
 - `api/main.py` carga `modelo_sismos_v5.joblib` por defecto; baseline opcional con `MODO_PREDICCION=baseline_zona`.
 - Sin commit ni push; ver la sección «Activación y orden de despliegue» del plan.
+
+## Actualización 2026-11-25 (v6: todo M4,0)
+
+- Decisión del usuario: **el umbral M4,5 no existe**. `loc200_n96_sin45` = M4,0+ sin réplicas; `lat_n96_prof70_150` = M4,0+ a 70–150 km en las cajas laterales. Estas dos columnas dejan de coincidir con el CSV histórico (que usaba M4,5); `loc200_n96_con`, `loc500_n96_con` y los targets siguen coincidiendo ≥ 99,5 %. Se eliminó `lat_n96_som45_con` del generador.
+- Artefacto activo: `api/modelo_sismos_v6.joblib` (reemplaza al v5, retirado). Métricas e interpretación honesta (sin mejora estadísticamente demostrada, sin deterioro) en `docs/PLAN_PRODUCCION_MODELO.md`.
+- La historia de mainshocks para el declustering en `/vigilar` pasó a 2 600 días por las cadenas de réplicas; con caché de 12 h.
+- Donde `docs/auditoria_datos_modelo.md`, `docs/diccionario_dataset_modelo.md`, `docs/definicion_geografica_zonas.md` o `docs/regla_target_m65_7d.md` mencionen M4,5 para estas variables, vale este archivo.

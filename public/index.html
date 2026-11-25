@@ -396,7 +396,7 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
             <th data-k="tasa"><button class="th-btn" onclick="ordenarPor('tasa')">Riesgo normal <span class="arr">▲</span></button></th>
             <th data-k="cercanos"><button class="th-btn" onclick="ordenarPor('cercanos')">Radio ≤ 200 km <span class="arr">▲</span></button><span class="th-sub">M4,0+ someros en 96 h</span></th>
             <th data-k="regionales"><button class="th-btn" onclick="ordenarPor('regionales')">Radio ≤ 500 km <span class="arr">▲</span></button><span class="th-sub">M4,0+ someros en 96 h</span></th>
-            <th data-k="profundos"><button class="th-btn" onclick="ordenarPor('profundos')">Profundidad intermedia <span class="arr">▲</span></button><span class="th-sub">M4,5+ a 70–150 km en la zona de vigilancia</span></th>
+            <th data-k="profundos"><button class="th-btn" onclick="ordenarPor('profundos')">Profundidad intermedia <span class="arr">▲</span></button><span class="th-sub">M4,0+ a 70–150 km en la zona de vigilancia</span></th>
           </tr>
         </thead>
         <tbody id="zonas-body">
@@ -422,9 +422,9 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 26p
         <div class="scale"><div><span class="pill ok">✓ Normal</span> hasta 1,2 veces</div><div><span class="pill mid">↗ Algo por encima</span> 1,2 a 2 veces</div><div><span class="pill warn">⚠ Por encima</span> 2 veces o más, con sismos cerca</div><div><span class="pill hot">⚠ Muy por encima</span> 4 veces o más, con sismos cerca</div><div><span class="pill mid">ℹ Alza del modelo / estadística</span> el número sube pero no hay sismos cerca que lo expliquen</div></div>
         <p>Debajo de cada etiqueta indicamos <b>qué impulsa</b> el número: sismos cercanos, sismos de profundidad intermedia o solo el cálculo estadístico del modelo.</p></div>
       <div><h4>Riesgo normal</h4><p>La probabilidad que esa región tiene, en una semana cualquiera, de un terremoto fuerte (magnitud 6,5 o más), según su historia.</p></div>
-      <div><h4>Radio ≤ 200 km</h4><p>Sismos de magnitud 4,0 o más, entre 5 y 40 km de profundidad, ocurridos en las últimas 96 horas (4 días) a menos de 200 km del centro de la región. Debajo se indica cuántos son de magnitud 4,5 o más y <b>no son réplicas</b> de otro sismo mayor (esos son los que más pesan en el cálculo).</p></div>
+      <div><h4>Radio ≤ 200 km</h4><p>Sismos de magnitud 4,0 o más, entre 5 y 40 km de profundidad, ocurridos en las últimas 96 horas (4 días) a menos de 200 km del centro de la región. Debajo se indica cuántos <b>no son réplicas</b> de otro sismo mayor (esos son los que más pesan en el cálculo).</p></div>
       <div><h4>Radio ≤ 500 km</h4><p>Sismos de magnitud 4,0 o más, entre 5 y 40 km de profundidad, en las últimas 96 horas a menos de 500 km del centro. <b>Incluye</b> los de ≤ 200 km. La resta (≤ 500 km menos ≤ 200 km) son los sismos del rango 200–500 km: regionales, no inmediatos.</p></div>
-      <div><h4>Profundidad intermedia (70–150 km)</h4><p>Sismos de magnitud 4,5 o más entre 70 y 150 km bajo tierra (profundidad intermedia, no profunda), en las últimas 96 horas, dentro de las <b>zonas laterales de vigilancia</b> definidas para cada región (no es un radio alrededor del centro). Donde una placa se hunde bajo otra; se sienten menos, pero indican tensión.</p></div>
+      <div><h4>Profundidad intermedia (70–150 km)</h4><p>Sismos de magnitud 4,0 o más entre 70 y 150 km bajo tierra (profundidad intermedia, no profunda), en las últimas 96 horas, dentro de las <b>zonas laterales de vigilancia</b> definidas para cada región (no es un radio alrededor del centro). Donde una placa se hunde bajo otra; se sienten menos, pero indican tensión.</p></div>
       <div><h4>¿Por qué un número alto no es alarmante?</h4><p>Si una región casi nunca tiene terremotos, multiplicar su riesgo por 10 sigue dando un riesgo pequeño. Por eso mostramos siempre la probabilidad real junto al «veces lo normal».</p></div>
     </div>
   </details>
@@ -444,7 +444,7 @@ let usuarioActual = null, tgVinculado = false, nAlertas = 0;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = (n, d = 1) => Number(n).toFixed(d).replace('.', ',');
-/* Actividad reciente (96 h): algún sismo M4,0+ a ≤ 200 km, o 2+ de profundidad intermedia (M4,5+, 70–150 km) en las zonas de vigilancia */
+/* Actividad reciente (96 h): algún sismo M4,0+ a ≤ 200 km, o 2+ de profundidad intermedia (M4,0+, 70–150 km) en las zonas de vigilancia */
 const esActiva = z => Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof70_150 || 0) >= 2;
 const multDe = z => (z.multiplicador_riesgo == null ? null : Number(z.multiplicador_riesgo));
 const probDe = z => (z.probabilidad_m65_7d == null ? null : Number(z.probabilidad_m65_7d));
@@ -542,7 +542,7 @@ function pintarZonasEnMapa() {
     const icon = L.divIcon({ className: '', html: `<span class="zm ${act ? 'act' : 'ok'}"></span>`, iconSize: [18, 18], iconAnchor: [9, 9] });
     L.marker([z.lat_centro, z.lon_centro], { icon })
       .bindTooltip(`${act ? '⚠' : '✓'} ${esc(z.zona)}`, { direction: 'top', offset: [0, -8] })
-      .bindPopup(`<b>${esc(z.zona)}</b><br>${esc(n.etiqueta)}${multDe(z) != null ? ` · ${esc(n.veces)}` : ''}<br><small>≤ 200 km: ${z.loc200_n96_con || 0} · ≤ 500 km: ${z.loc500_n96_con || 0} · prof. intermedia (M4,5+, 70–150 km): ${z.lat_n96_prof70_150 || 0}</small>`)
+      .bindPopup(`<b>${esc(z.zona)}</b><br>${esc(n.etiqueta)}${multDe(z) != null ? ` · ${esc(n.veces)}` : ''}<br><small>≤ 200 km: ${z.loc200_n96_con || 0} · ≤ 500 km: ${z.loc500_n96_con || 0} · prof. intermedia (M4,0+, 70–150 km): ${z.lat_n96_prof70_150 || 0}</small>`)
       .addTo(zonaLayer);
   });
 }
@@ -622,7 +622,7 @@ function renderizarTabla() {
     const anios = semanasEq >= 104 ? `~1 cada ${fmt(semanasEq / 52)} años` : `~1 cada ${semanasEq} semanas`;
     const total200 = Number(z.loc200_n96_con || 0);
     const leves200 = Number(z.loc200_n96_sin45 || 0);
-    const mod200 = leves200; /* T3: loc200_n96_sin45 = M4,5+ SIN réplicas (no «leves <M4,5») */
+    const mod200 = leves200; /* T3: loc200_n96_sin45 = M4,0+ SIN réplicas */
     const prof = Number(z.lat_n96_prof70_150 || 0);
     const reg500 = Number(z.loc500_n96_con || 0);
     const n = nivelRiesgo(z);
@@ -634,9 +634,9 @@ function renderizarTabla() {
           <span class="sub-data">${m != null ? `<b>${fmt(m)}×</b> · ${esc(n.veces)}` : 'Se calcula en la próxima revisión'}${p != null ? `<br>${fmt(p * 100, 2)} % de un terremoto fuerte esta semana` : ''}${m != null && n.motivo ? `<br><em>${esc(n.motivo)}</em>` : ''}</span></div></td>
         <td data-label="Riesgo normal"><div><b>${fmt(tasa * 100, 2)} %</b><span class="sub-data">${anios}</span>
           <div class="pbar" aria-hidden="true"><i style="width:${Math.max(4, (tasa / maxTasa) * 100)}%"></i></div></div></td>
-        <td data-label="Radio ≤ 200 km"><div><b>${total200}</b> ${total200 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">en 96 h · ${mod200} de M4,5+ sin réplicas</span></div></td>
+        <td data-label="Radio ≤ 200 km"><div><b>${total200}</b> ${total200 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">en 96 h · ${mod200} sin réplicas</span></div></td>
         <td data-label="Radio ≤ 500 km"><div><b>${reg500}</b> ${reg500 === 1 ? 'sismo' : 'sismos'}<span class="sub-data">en 96 h · ${Math.max(0, reg500 - total200)} entre 200 y 500 km</span></div></td>
-        <td data-label="Profundidad intermedia"><div><b>${prof}</b><span class="sub-data">${prof > 0 ? 'M4,5+ a 70–150 km, en la zona de vigilancia' : 'ninguno en 96 h'}</span></div></td>
+        <td data-label="Profundidad intermedia"><div><b>${prof}</b><span class="sub-data">${prof > 0 ? 'M4,0+ a 70–150 km, en la zona de vigilancia' : 'ninguno en 96 h'}</span></div></td>
       </tr>`;
   }).join('');
 

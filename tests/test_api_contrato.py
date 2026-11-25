@@ -126,7 +126,7 @@ class ContratoApi(unittest.TestCase):
         self.assertEqual(zonas, set(main.artefacto["tasas_zona"]))
 
     def test_artefacto_activo_cumple_el_contrato_interno(self):
-        self.assertTrue(main.artefacto["version"].startswith("v5"))
+        self.assertTrue(main.artefacto["version"].startswith("v6"))
         self.assertTrue(all(0 < t < 1 for t in main.artefacto["tasas_zona"].values()))
         self.assertTrue(all(e["peso"] >= 0 for e in main.artefacto["escalones"]))
         self.assertEqual(set(main.artefacto["metricas_test"]),
@@ -161,6 +161,7 @@ class ContratoApi(unittest.TestCase):
 
     def _vigilar(self, modo, umbral=0.5, zona=ZONA, lat=39.0, lon=142.5, n=6):
         sb = SupabaseFalso(umbral, zona)
+        main.limpiar_cache_historia()  # cada prueba parte sin historia en memoria
         entorno = {**ENTORNO_FALSO}
         if modo:
             entorno["MODO_PREDICCION"] = modo

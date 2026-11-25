@@ -15,9 +15,11 @@ from pydantic import BaseModel
 from supabase import create_client
 
 try:  # Render arranca con `uvicorn api.main:app` (paquete); los tests importan `main` suelto
-    from .features_t3 import HISTORIA_GK_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo, cargar_zonas, features_vivas
+    from .features_t3 import (HISTORIA_GK_DIAS, TRAMO_HISTORIA_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo,
+                              cargar_zonas, features_vivas)
 except ImportError:
-    from features_t3 import HISTORIA_GK_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo, cargar_zonas, features_vivas
+    from features_t3 import (HISTORIA_GK_DIAS, TRAMO_HISTORIA_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo,
+                             cargar_zonas, features_vivas)
 
 app = FastAPI(title="API Riesgo Sísmico Relativo (USGS)")
 
@@ -28,10 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# v5 = modelo multiplicativo T3 cuyas features calcula /vigilar con las MISMAS reglas que el entrenamiento
+# v6 = modelo multiplicativo T3 (M4,0) cuyas features calcula /vigilar con las MISMAS reglas que el entrenamiento
 # (api/features_t3.py). El artefacto v2 anterior (modelo_sismos.joblib) queda solo como histórico/rollback
 # del modelo: su media/p90 tienen fuga temporal y NO son compatibles con las features T3 en vivo.
-MODEL_PATH = Path(__file__).parent / os.getenv("MODELO_ARTEFACTO", "modelo_sismos_v5.joblib")
+MODEL_PATH = Path(__file__).parent / os.getenv("MODELO_ARTEFACTO", "modelo_sismos_v6.joblib")
 artefacto = joblib.load(MODEL_PATH)
 ZONAS_T3 = cargar_zonas()
 
@@ -152,7 +154,7 @@ def calcular_prediccion(datos: ConsultaRiesgo):
             valores[feature] for feature in features
         ]], dtype=float)
 
-    if str(artefacto.get("version", "")).startswith("v5"):
+    if "escalones" in artefacto:
         # logit(p) = logit(tasa_zona) + sesgo + suma de pesos de los escalones activados
         valores_v5 = {
             "loc200_n96_con": datos.loc200_n96_con,
@@ -165,10 +167,10 @@ def calcular_prediccion(datos: ConsultaRiesgo):
         prob_7d = float(artefacto["modelo"].predict_proba(X)[0][1])
     multiplicador = round(prob_7d / tasa_base, 2) if tasa_base > 0 else 1.0
 
-    # v5: «enjambre» = al menos 3 sismos M4.5+ SIN réplicas a <=200 km (la señal que el modelo premia).
+    # «enjambre» = al menos 3 sismos M4.0+ SIN réplicas a <=200 km (la señal que el modelo premia).
     local_activo = (
         datos.loc200_n96_sin45 >= 3
-        if str(artefacto.get("version", "")).startswith("v5")
+        if "escalones" in artefacto
         else datos.loc200_n96_con >= 3
     )
     es_elevado = multiplicador >= 2.0 and prob_7d >= 0.025 and local_activo
@@ -222,7 +224,7 @@ def describir_nivel_usuario(
         if loc200_con == 0 and prof70_150 > 0:
             estado = "🟡 MODERADO (Solo sismos de profundidad intermedia en observación)"
             resumen_simple = (
-                "Solo hay sismos de profundidad intermedia (M4,5+ a 70–150 km, en las regiones de vigilancia de la zona); "
+                "Solo hay sismos de profundidad intermedia (M4,0+ a 70–150 km, en las regiones de vigilancia de la zona); "
                 "ninguno a menos de 200 km."
             )
         else:
@@ -254,7 +256,7 @@ def construir_mensaje_alerta(zona, estado_txt, resumen_simple, frec_txt, info, u
         cerca_txt = "ningún temblor a menos de 200 km"
     else:
         cerca_txt = f"{_plural(cercanos, 'temblor cercano', 'temblores cercanos')} (a menos de 200 km"
-        cerca_txt += f", {_plural(m45_plus, 'fuerte', 'fuertes')} de M4.5+)" if m45_plus else ")"
+        cerca_txt += f", {m45_plus} sin contar réplicas)" if m45_plus else ")"
     anillo = max(0, regionales - cercanos)  # sismos entre 200 y 500 km
     if regionales == 0:
         region_txt = "ninguno a menos de 500 km"
@@ -270,7 +272,7 @@ def construir_mensaje_alerta(zona, estado_txt, resumen_simple, frec_txt, info, u
         )
     prof_txt = (
         "ninguno de profundidad intermedia (70–150 km)" if profundos == 0
-        else f"{_plural(profundos, 'sismo', 'sismos')} de profundidad intermedia (M4,5+ a 70–150 km, en las regiones de vigilancia de la zona)"
+        else f"{_plural(profundos, 'sismo', 'sismos')} de profundidad intermedia (M4,0+ a 70–150 km, en las regiones de vigilancia de la zona)"
     )
     if cercanos == 0 and regionales == 0:
         impulsor = "Sin sismos cercanos en 96 h: el valor viene solo del cálculo estadístico del modelo."
@@ -382,12 +384,44 @@ def descargar_eventos_usgs(inicio: datetime, fin: datetime, min_mag: float) -> l
     return filas
 
 
+_CACHE_HISTORIA: dict = {"hasta": None, "eventos": {}, "creado": 0.0}
+CACHE_HISTORIA_SEGUNDOS = 12 * 3600
+
+
+def limpiar_cache_historia() -> None:
+    _CACHE_HISTORIA.update({"hasta": None, "eventos": {}, "creado": 0.0})
+
+
+def historia_gk(ahora: datetime, inicio_ventana: datetime) -> list:
+    """M>=4.8 de los últimos HISTORIA_GK_DIAS días hasta inicio_ventana (mainshocks para el declustering GK).
+
+    La descarga completa (~23000 eventos, varias consultas) es lenta; el pasado cambia poco, así que se guarda
+    en memoria 12 h y, entre medias, solo se pide lo ocurrido desde la última vez.
+    """
+    c = _CACHE_HISTORIA
+    ahora_s = ahora.timestamp()
+    if c["hasta"] is None or ahora_s - c["creado"] > CACHE_HISTORIA_SEGUNDOS:
+        limpiar_cache_historia()
+        c["creado"] = ahora_s
+        desde = ahora - timedelta(days=HISTORIA_GK_DIAS)
+    else:
+        desde = c["hasta"]
+    while desde < inicio_ventana:  # tramos: USGS rechaza consultas de más de 20000 eventos
+        hasta = min(desde + timedelta(days=TRAMO_HISTORIA_DIAS), inicio_ventana)
+        for e in descargar_eventos_usgs(desde, hasta, UMBRAL_MAINSHOCK_GK):
+            c["eventos"][e[0]] = e
+        desde = hasta
+    c["hasta"] = max(inicio_ventana, c["hasta"]) if c["hasta"] else inicio_ventana
+    limite = ahora_s - HISTORIA_GK_DIAS * 86400
+    return [e for e in c["eventos"].values() if e[1] >= limite]
+
+
 def construir_catalogo_t3(ahora: datetime):
     """Catálogo con lo necesario para las features T3: M>=4.0 de las últimas 96 h y los M>=4.8 de los
     últimos HISTORIA_GK_DIAS días (mainshocks para el declustering Gardner-Knopoff idéntico al del entrenamiento)."""
     inicio_ventana = ahora - timedelta(seconds=W96)
     recientes = descargar_eventos_usgs(inicio_ventana, ahora, 4.0)
-    historia = descargar_eventos_usgs(ahora - timedelta(days=HISTORIA_GK_DIAS), inicio_ventana, UMBRAL_MAINSHOCK_GK)
+    historia = historia_gk(ahora, inicio_ventana)
     por_id = {e[0]: e for e in historia}
     por_id.update({e[0]: e for e in recientes})
     ev = list(por_id.values())
@@ -793,9 +827,9 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             prob_val,
             f"- {nombre}: estado={estado_txt}, prob_7d={prob_val*100:.2f}%, "
             f"habitual_7d={base_val*100:.2f}% ({frec_txt}), "
-            f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} de M4.5+ sin réplicas y {max(0, loc200_con - loc200_sin45)} menores o réplicas), "
+            f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} sin réplicas y {max(0, loc200_con - loc200_sin45)} réplicas), "
             f"sismos_regionales_500km={loc500_con} (incluye los de 200 km; {max(0, loc500_con - loc200_con)} están en el rango 200–500 km), "
-            f"sismos_prof_intermedia_M45_70_150km_regiones_laterales={prof70_150}"
+            f"sismos_prof_intermedia_70_150km_regiones_laterales={prof70_150}"
         ))
 
     evaluaciones.sort(key=lambda x: x[0], reverse=True)
@@ -831,9 +865,9 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             "🚦 <b>Nivel de actividad actual:</b> [Copia exactamente el 'estado' proporcionado en los datos]\n"
             "⚠️ <b>Probabilidad de terremoto fuerte (M6.5+ esta semana):</b> <b>[prob_7d]</b> — En esta zona lo habitual en una semana tranquila es [habitual_7d] ([equivalencia en semanas]), por lo que hoy está a <b>[multiplicador]x</b> de su nivel normal.\n"
             "📊 <b>¿En qué se basa este resultado? (últimas 96 horas):</b>\n"
-            "• Sismos cercanos (&lt;200 km, M4,0+ de 5–40 km): [sismos_cercanos_200km] (de ellos [M4.5+ sin réplicas] M4.5+ sin réplicas)\n"
+            "• Sismos cercanos (&lt;200 km, M4,0+ de 5–40 km): [sismos_cercanos_200km] (de ellos [sin réplicas] no son réplicas)\n"
             "• Sismos en la región (&lt;500 km, incluye los cercanos): [sismos_regionales_500km] — si los cercanos son 0, aclara que esos sismos están en el rango de 200–500 km, no a menos de 200 km\n"
-            "• Sismos de profundidad intermedia (M4,5+ a 70–150 km, en las regiones de vigilancia de la zona): [sismos_prof_intermedia_M45_70_150km_regiones_laterales]\n"
+            "• Sismos de profundidad intermedia (M4,0+ a 70–150 km, en las regiones de vigilancia de la zona): [sismos_prof_intermedia_70_150km_regiones_laterales]\n"
             "💡 <b>En palabras simples:</b> [1 o 2 frases muy claras y coherentes con los números reales]\n\n"
             "Si el usuario pregunta por varias zonas o por las zonas más activas, muestra el Top 3 ordenado por mayor probabilidad real (prob_7d) usando ese mismo formato.\n\n"
             "Datos calculados en tiempo real (ordenados de mayor a menor probabilidad real):\n"

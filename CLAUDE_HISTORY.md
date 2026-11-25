@@ -6,6 +6,9 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
+## 2026-11-25 — Todo M4,0 (modelo v6)
+- Decisión del usuario: sin umbral M4,5. Features, dataset, entrenamiento, `/vigilar`, web y pruebas pasan a M4,0; modelo v6; historia GK de 2 600 días con caché. Detalle en `docs/PLAN_PRODUCCION_MODELO.md`.
+
 ## 2026-11-25 — Modelo v5 y /vigilar alineado con el entrenamiento
 - `api/features_t3.py` (única definición de features), `/vigilar` M4,0+ con Gardner–Knopoff, modelo multiplicativo v5 (supera al baseline en test 2024+), textos de web y Telegram actualizados, 31 pruebas. Sin commit/push.
 - Pendiente (usuario): revisar `git diff`, commit sin el workflow, desplegar API y web.
