@@ -30,6 +30,7 @@ USGS ──► /vigilar (api/main.py, Render) ──► Supabase (zonas_sismicas
 
 ## Métricas de actividad (ventana de 96 h, fuente USGS ≥ M2.5)
 - `loc200_n96_con`: sismos a ≤ 200 km del centro (`sin45` = leves < M4.5). `loc500_n96_con`: a ≤ 500 km, incluye los anteriores. `lat_n96_prof70_150`: profundidad intermedia (70–150 km) **dentro de 500 km**.
+- Rango 200–500 km = `loc500 − loc200` (no es campo nuevo); se muestra en la web y en Telegram para no confundir «regional» con «cercano».
 - Web (`nivelRiesgo`) y Telegram (`describir_nivel_usuario`) usan la misma lógica; sin sismos cerca la etiqueta es «Alza del modelo / solo estadística» y se indica qué impulsa el valor.
 
 ## Modelos del bot de Telegram

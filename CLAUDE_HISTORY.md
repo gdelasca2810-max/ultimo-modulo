@@ -9,6 +9,7 @@ Una entrada por sesión, la más reciente arriba. Formato:
 ## 2026-11-25 — Etiquetas de actividad coherentes y fallo del cron
 - Web y Telegram usan la misma lógica de estado. Columnas renombradas: Radio ≤ 200 km, Radio ≤ 500 km (nueva) y Profundidad intermedia (70–150 km, dentro de 500 km). Cada fila y mensaje explica qué impulsa el número. Commit 20b7443.
 - Cron de las 16 h falló («response larger than the allowed limit»): hipótesis, arranque en frío de Render. `/vigilar` solo pesa ~194 B.
+- Aclarado el rango 200–500 km: si hay 0 sismos a ≤200 km pero sí a ≤500 km, web y Telegram dicen que están entre 200 y 500 km (regionales, no inmediatos).
 - Pendiente: job de calentamiento a las 15:50 en cron-job.org, definir `CRON_SECRET` en Render, confirmar Render Live.
 
 ## 2026-11-24 — Web en lenguaje simple y docs del modelo
