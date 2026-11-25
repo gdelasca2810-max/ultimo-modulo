@@ -106,17 +106,50 @@ def mascaras_zona(definicion: dict, lat: np.ndarray, lon: np.ndarray, dep: np.nd
     }
 
 
-class Catalogo:
-    """Eventos ordenados por tiempo con la marca de réplica GK ya calculada."""
+def ventana_dias_gk(mag: np.ndarray) -> np.ndarray:
+    """Duración (días) de la ventana temporal de Gardner-Knopoff para cada magnitud."""
+    mag = np.asarray(mag, dtype=float)
+    return np.where(mag >= 6.5, 10 ** (0.032 * mag + 2.7389), 10 ** (0.5409 * mag - 0.547))
 
-    def __init__(self, ts, lat, lon, dep, mag):
+
+def replicas_incremental(prev_ts, prev_lat, prev_lon, prev_mag, prev_aft,
+                         new_ts, new_lat, new_lon, new_mag) -> np.ndarray:
+    """Marca réplicas de eventos NUEVOS sin reprocesar la historia (resultado idéntico al GK completo).
+
+    Una réplica solo depende de sismos ANTERIORES, así que las marcas de la historia no cambian cuando llegan
+    eventos posteriores. Basta con los padres previos que no son réplicas y cuya ventana aún alcanza a los nuevos.
+    Precondición: los eventos nuevos son posteriores a los previos (el caso de /vigilar).
+    """
+    prev_ts, prev_mag, prev_aft = np.asarray(prev_ts), np.asarray(prev_mag, float), np.asarray(prev_aft, bool)
+    new_ts = np.asarray(new_ts, dtype=np.int64)
+    if len(new_ts) == 0:
+        return np.zeros(0, dtype=bool)
+    vivos = (~prev_aft) & (prev_mag >= UMBRAL_MAINSHOCK_GK) & (
+        prev_ts + (ventana_dias_gk(prev_mag) * 86400).astype(np.int64) >= new_ts.min())
+    ts = np.concatenate([np.asarray(prev_ts)[vivos], new_ts])
+    lat = np.concatenate([np.asarray(prev_lat, float)[vivos], np.asarray(new_lat, float)])
+    lon = np.concatenate([np.asarray(prev_lon, float)[vivos], np.asarray(new_lon, float)])
+    mag = np.concatenate([prev_mag[vivos], np.asarray(new_mag, float)])
+    es_nuevo = np.concatenate([np.zeros(int(vivos.sum()), dtype=bool), np.ones(len(new_ts), dtype=bool)])
+    orden = np.argsort(ts, kind="stable")
+    aft = decluster_gk(ts[orden], lat[orden], lon[orden], mag[orden])
+    resultado = np.zeros(len(ts), dtype=bool)
+    resultado[orden] = aft
+    return resultado[es_nuevo]  # en el orden en que llegaron los eventos nuevos
+
+
+class Catalogo:
+    """Eventos ordenados por tiempo con la marca de réplica GK (calculada, o aportada ya calculada)."""
+
+    def __init__(self, ts, lat, lon, dep, mag, aft=None):
         orden = np.argsort(np.asarray(ts), kind="stable")
         self.ts = np.asarray(ts, dtype=np.int64)[orden]
         self.lat = np.asarray(lat, dtype=float)[orden]
         self.lon = np.asarray(lon, dtype=float)[orden]
         self.dep = np.asarray(dep, dtype=float)[orden]
         self.mag = np.asarray(mag, dtype=float)[orden]
-        self.aft = decluster_gk(self.ts, self.lat, self.lon, self.mag)
+        self.aft = (decluster_gk(self.ts, self.lat, self.lon, self.mag) if aft is None
+                    else np.asarray(aft, dtype=bool)[orden])
 
 
 def features_vivas(zonas: dict, cat: Catalogo, ahora_s: int) -> dict[str, dict[str, int]]:

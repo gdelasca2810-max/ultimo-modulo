@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -85,6 +86,42 @@ class IdentidadEntrenamientoProduccion(unittest.TestCase):
         con_historia = vivo(datos[(reciente & (datos.mag >= 4.0)) | (~reciente & (datos.mag >= 4.8))])
         sin_historia = vivo(datos[reciente & (datos.mag >= 4.0)])
         self.assertLess(con_historia["loc200_n96_sin45"], sin_historia["loc200_n96_sin45"])
+
+
+class DeclusteringIncremental(unittest.TestCase):
+    def _catalogo_con_cadenas(self, n=4000, seed=3):
+        rng = np.random.default_rng(seed)
+        ts = np.sort(rng.integers(1_500_000_000, 1_500_000_000 + 3 * 365 * 86400, n))
+        mag = np.minimum(4.0 + rng.exponential(0.45, n), 7.5)  # Gutenberg-Richter, b ~ 1
+        lat, lon = rng.normal(0, 0.6, n), rng.normal(0, 0.6, n)  # área pequeña: muchas réplicas y cadenas
+        return ts, lat, lon, mag
+
+    def test_incremental_es_identico_al_gk_completo(self):
+        ts, lat, lon, mag = self._catalogo_con_cadenas()
+        completo = f3.decluster_gk(ts, lat, lon, mag)
+        self.assertGreater(completo.sum(), 300)  # hay réplicas de verdad
+        for corte in (2500, 3500, 3990):  # historia = primeros `corte` eventos; nuevos = el resto
+            prev = f3.decluster_gk(ts[:corte], lat[:corte], lon[:corte], mag[:corte])
+            self.assertTrue(np.array_equal(prev, completo[:corte]))  # las marcas pasadas no cambian
+            nuevo = f3.replicas_incremental(ts[:corte], lat[:corte], lon[:corte], mag[:corte], prev,
+                                            ts[corte:], lat[corte:], lon[corte:], mag[corte:])
+            self.assertTrue(np.array_equal(nuevo, completo[corte:]), f"corte={corte}")
+
+    def test_incremental_por_tandas_sucesivas(self):
+        ts, lat, lon, mag = self._catalogo_con_cadenas(seed=7)
+        completo = f3.decluster_gk(ts, lat, lon, mag)
+        aft = f3.decluster_gk(ts[:1000], lat[:1000], lon[:1000], mag[:1000])
+        for ini in range(1000, len(ts), 700):
+            fin = min(ini + 700, len(ts))
+            nuevo = f3.replicas_incremental(ts[:ini], lat[:ini], lon[:ini], mag[:ini], aft,
+                                            ts[ini:fin], lat[ini:fin], lon[ini:fin], mag[ini:fin])
+            aft = np.concatenate([aft, nuevo])
+        self.assertTrue(np.array_equal(aft, completo))
+
+    def test_sin_eventos_nuevos(self):
+        vacio = f3.replicas_incremental(np.array([1]), np.array([0.0]), np.array([0.0]), np.array([5.0]),
+                                        np.array([False]), np.array([], dtype=np.int64), [], [], [])
+        self.assertEqual(len(vacio), 0)
 
 
 if __name__ == "__main__":

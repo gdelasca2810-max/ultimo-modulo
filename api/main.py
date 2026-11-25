@@ -16,10 +16,10 @@ from supabase import create_client
 
 try:  # Render arranca con `uvicorn api.main:app` (paquete); los tests importan `main` suelto
     from .features_t3 import (HISTORIA_GK_DIAS, TRAMO_HISTORIA_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo,
-                              cargar_zonas, features_vivas)
+                              cargar_zonas, features_vivas, replicas_incremental)
 except ImportError:
     from features_t3 import (HISTORIA_GK_DIAS, TRAMO_HISTORIA_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo,
-                             cargar_zonas, features_vivas)
+                             cargar_zonas, features_vivas, replicas_incremental)
 
 app = FastAPI(title="API Riesgo Sísmico Relativo (USGS)")
 
@@ -384,36 +384,63 @@ def descargar_eventos_usgs(inicio: datetime, fin: datetime, min_mag: float) -> l
     return filas
 
 
-_CACHE_HISTORIA: dict = {"hasta": None, "eventos": {}, "creado": 0.0}
-CACHE_HISTORIA_SEGUNDOS = 12 * 3600
+_CACHE_HISTORIA: dict = {"hasta": None, "creado": 0.0, "ids": set(), "ts": None, "lat": None, "lon": None,
+                         "dep": None, "mag": None, "aft": None}
+CACHE_HISTORIA_SEGUNDOS = 24 * 3600
 
 
 def limpiar_cache_historia() -> None:
-    _CACHE_HISTORIA.update({"hasta": None, "eventos": {}, "creado": 0.0})
+    _CACHE_HISTORIA.update({"hasta": None, "creado": 0.0, "ids": set(), "ts": None, "lat": None, "lon": None,
+                            "dep": None, "mag": None, "aft": None})
 
 
-def historia_gk(ahora: datetime, inicio_ventana: datetime) -> list:
-    """M>=4.8 de los últimos HISTORIA_GK_DIAS días hasta inicio_ventana (mainshocks para el declustering GK).
+def _columnas(eventos: list) -> tuple:
+    return (np.array([e[1] for e in eventos], dtype=np.int64), np.array([e[2] for e in eventos], dtype=float),
+            np.array([e[3] for e in eventos], dtype=float), np.array([e[4] for e in eventos], dtype=float),
+            np.array([e[5] for e in eventos], dtype=float))
 
-    La descarga completa (~23000 eventos, varias consultas) es lenta; el pasado cambia poco, así que se guarda
-    en memoria 12 h y, entre medias, solo se pide lo ocurrido desde la última vez.
+
+def historia_gk(ahora: datetime, inicio_ventana: datetime) -> dict:
+    """M>=4.8 de los últimos HISTORIA_GK_DIAS días hasta inicio_ventana, con su marca de réplica GK ya calculada.
+
+    La descarga completa (~23000 eventos) y su declustering son lentos. Como una réplica solo depende de sismos
+    anteriores, las marcas de la historia no cambian: se calculan una vez (24 h de caché) y, entre medias, solo se
+    descargan y marcan los eventos nuevos (`replicas_incremental`, idéntico al GK completo; ver tests).
     """
     c = _CACHE_HISTORIA
     ahora_s = ahora.timestamp()
     if c["hasta"] is None or ahora_s - c["creado"] > CACHE_HISTORIA_SEGUNDOS:
         limpiar_cache_historia()
         c["creado"] = ahora_s
-        desde = ahora - timedelta(days=HISTORIA_GK_DIAS)
+        desde, completo = ahora - timedelta(days=HISTORIA_GK_DIAS), True
     else:
-        desde = c["hasta"]
+        desde, completo = c["hasta"], False
+    nuevos = []
     while desde < inicio_ventana:  # tramos: USGS rechaza consultas de más de 20000 eventos
         hasta = min(desde + timedelta(days=TRAMO_HISTORIA_DIAS), inicio_ventana)
-        for e in descargar_eventos_usgs(desde, hasta, UMBRAL_MAINSHOCK_GK):
-            c["eventos"][e[0]] = e
+        nuevos += [e for e in descargar_eventos_usgs(desde, hasta, UMBRAL_MAINSHOCK_GK) if e[0] not in c["ids"]]
         desde = hasta
+    por_id = {e[0]: e for e in nuevos}
+    nuevos = sorted(por_id.values(), key=lambda e: e[1])
+    if nuevos:
+        ts, lat, lon, dep, mag = _columnas(nuevos)
+        if completo or c["ts"] is None or len(c["ts"]) == 0:
+            aft = np.asarray(Catalogo(ts, lat, lon, dep, mag).aft)  # ya ordenado por tiempo
+        else:
+            aft = replicas_incremental(c["ts"], c["lat"], c["lon"], c["mag"], c["aft"], ts, lat, lon, mag)
+        for clave, valor in (("ts", ts), ("lat", lat), ("lon", lon), ("dep", dep), ("mag", mag), ("aft", aft)):
+            c[clave] = valor if c[clave] is None else np.concatenate([c[clave], valor])
+        c["ids"].update(por_id)
+    elif c["ts"] is None:
+        for clave, tipo in (("ts", np.int64), ("lat", float), ("lon", float), ("dep", float), ("mag", float), ("aft", bool)):
+            c[clave] = np.zeros(0, dtype=tipo)
     c["hasta"] = max(inicio_ventana, c["hasta"]) if c["hasta"] else inicio_ventana
-    limite = ahora_s - HISTORIA_GK_DIAS * 86400
-    return [e for e in c["eventos"].values() if e[1] >= limite]
+    limite = int(ahora_s - HISTORIA_GK_DIAS * 86400)
+    mantener = c["ts"] >= limite  # recortar lo más antiguo no altera las marcas de lo que se conserva
+    if not mantener.all():
+        for clave in ("ts", "lat", "lon", "dep", "mag", "aft"):
+            c[clave] = c[clave][mantener]
+    return {k: c[k] for k in ("ts", "lat", "lon", "dep", "mag", "aft")}
 
 
 def construir_catalogo_t3(ahora: datetime):
@@ -421,12 +448,14 @@ def construir_catalogo_t3(ahora: datetime):
     últimos HISTORIA_GK_DIAS días (mainshocks para el declustering Gardner-Knopoff idéntico al del entrenamiento)."""
     inicio_ventana = ahora - timedelta(seconds=W96)
     recientes = descargar_eventos_usgs(inicio_ventana, ahora, 4.0)
-    historia = historia_gk(ahora, inicio_ventana)
-    por_id = {e[0]: e for e in historia}
-    por_id.update({e[0]: e for e in recientes})
-    ev = list(por_id.values())
-    cat = Catalogo([e[1] for e in ev], [e[2] for e in ev], [e[3] for e in ev],
-                   [e[4] for e in ev], [e[5] for e in ev])
+    h = historia_gk(ahora, inicio_ventana)
+    conocidos = _CACHE_HISTORIA["ids"]
+    recientes_nuevos = sorted({e[0]: e for e in recientes if e[0] not in conocidos}.values(), key=lambda e: e[1])
+    ts, lat, lon, dep, mag = _columnas(recientes_nuevos)
+    aft_rec = replicas_incremental(h["ts"], h["lat"], h["lon"], h["mag"], h["aft"], ts, lat, lon, mag)
+    cat = Catalogo(np.concatenate([h["ts"], ts]), np.concatenate([h["lat"], lat]), np.concatenate([h["lon"], lon]),
+                   np.concatenate([h["dep"], dep]), np.concatenate([h["mag"], mag]),
+                   aft=np.concatenate([h["aft"], aft_rec]))
     return cat, len(recientes)
 
 

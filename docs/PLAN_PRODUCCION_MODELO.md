@@ -67,7 +67,7 @@ Identidad producción/entrenamiento medida con datos reales: **2 000 de 2 000** 
 
 ## 6. Rendimiento de `/vigilar`
 
-Descarga ~23 000 eventos M≥4,8 de historia + los M≥4,0 de 96 h. Primera ejecución (o tras 12 h / reinicio de Render): ~10 s en local, probablemente 15–25 s en Render. Después, la historia está en memoria y solo se pide lo nuevo (~2 s). Render gratuito duerme tras 15 min sin tráfico y pierde la caché: el primer `/vigilar` tras un arranque en frío puede rozar el límite de ~30 s de cron-job.org.
+Descarga ~23 000 eventos M≥4,8 de historia (en tramos) + los M≥4,0 de 96 h. Una réplica solo depende de sismos anteriores, así que las marcas de réplica de la historia se calculan **una vez** y se guardan en memoria 24 h; en cada ejecución solo se descargan y marcan los eventos nuevos (`replicas_incremental`, idéntico al declustering completo: `tests/test_features_t3.py` y comprobación con 23 048 eventos reales de USGS). Medido en local: primera ejecución ~13 s, siguientes ~2 s. En Render la primera tras un reinicio/arranque en frío es más lenta (medido 28 s con la versión anterior sin marcas en caché); Render gratuito duerme tras 15 min sin tráfico y pierde la caché, así que el primer `/vigilar` del día puede rozar el límite de ~30 s de cron-job.org (el servidor sigue procesando aunque el cron corte).
 
 ## 7. Plan B: baseline por zona
 
