@@ -27,7 +27,7 @@ Verificado con datos reales: con solo lo que `/vigilar` descargaría, las 4 feat
 | Modelo **evaluado** (ajuste ≤ 2023-12-24) | 0,29 / 0,32 / 0,31 | ≈ 2,5× | produce las métricas de test de abajo |
 | Modelo **desplegado** (reajuste con todo 2016–2026) | 0,56 / 0,48 / 0,57 | ≈ 4,9× | `api/modelo_sismos_v5.joblib` |
 
-El reajuste incorpora los casos de cola de 2024–2026 (con ≥ 3 sismos locales, 8 positivos en 29 filas), así que los factores son mayores. **Las métricas de test corresponden al modelo evaluado, no al desplegado**: el desplegado no puede validarse fuera de muestra con estos datos. Con los pesos desplegados, un enjambre de 3–4 sismos M4,5+ da ≈ 1,7× y con ≥ 5 sismos ≈ 2,8–3,1×; con los evaluados, solo se llegaba a 2× con los tres escalones a la vez. Si se prefiere la opción conservadora, basta copiar los pesos del modelo evaluado al artefacto (decisión de producto pendiente).
+El reajuste incorpora los casos de cola de 2024–2026 (con ≥ 3 sismos locales, 8 positivos en 29 filas), así que los factores son mayores. **Las métricas de test corresponden al modelo evaluado, no al desplegado**: el desplegado no puede validarse fuera de muestra con estos datos. Con los pesos desplegados: ≥ 3 sismos M4,5+ sin réplicas por sí solos dan ≈ 1,7×, y ≥ 5 sismos M4,0+ por sí solos también ≈ 1,7×; **llegan a 3,1× cuando se cumplen ambas cosas (≥ 3 M4,5+ sin réplicas y ≥ 5 M4,0+ en total a ≤ 200 km)** y a 4,9× con ≥ 5 M4,5+ sin réplicas. Con los pesos evaluados solo se llegaba a 2× con los tres escalones a la vez. Si se prefiere la opción conservadora, basta copiar los pesos del modelo evaluado al artefacto (decisión de producto pendiente).
 
 Los escalones se fijaron a priori a partir de la señal medida (tasa observada/esperada de 10–30× en la cola, en train y en test) y el único hiperparámetro (λ) se eligió con validación cruzada por años de 2016–2023. El test 2024+ no se usó para elegir nada.
 
@@ -44,7 +44,7 @@ La mejora es **real pero modesta**: la señal está en una cola rara (en test, ~
 ## 3. Alertas (qué cambia respecto a antes)
 
 - Regla de alerta: multiplicador ≥ umbral del usuario **y** «enjambre» = multiplicador ≥ 2, probabilidad ≥ 2,5 % y ≥ 3 sismos M4,5+ sin réplicas a ≤ 200 km.
-- Con los pesos desplegados el umbral 2× se alcanza con ≥ 5 sismos M4,5+ sin réplicas a ≤ 200 km (o ≥ 3 más ≥ 5 M4,0+). Habrá **menos alertas que antes**: los «2×» del modelo v2 salían en buena parte de la fuga y del desajuste de variables. Una zona de tasa muy baja (p. ej. Nankai, 0,2 %) nunca alerta por un multiplicador artificial: 2× sigue siendo < 2,5 %.
+- Con los pesos desplegados el umbral 2× se alcanza con **≥ 5 sismos M4,0+ a ≤ 200 km, de los cuales ≥ 3 sean M4,5+ sin réplicas** (3,1×; 4,9× si los M4,5+ sin réplicas son ≥ 5). Habrá **menos alertas que antes**: los «2×» del modelo v2 salían en buena parte de la fuga y del desajuste de variables. Una zona de tasa muy baja (p. ej. Nankai, 0,2 %) nunca alerta por un multiplicador artificial: 2× sigue siendo < 2,5 %.
 - Los textos de la web y de Telegram ya describen las columnas con su definición real (M4,0+ someros; M4,5+ sin réplicas; profundidad intermedia en las zonas laterales).
 
 ## 4. Criterios obligatorios (cumplidos por v5) — `api/criterios_despliegue.py`
