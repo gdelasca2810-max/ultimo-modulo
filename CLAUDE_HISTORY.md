@@ -6,6 +6,9 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
+## 2026-11-26 — Radio local de 300 km (modelo v7)
+- Exploración de bandas de profundidad y radios; aplicado 300 km con 5–40 km. Modelo v7 (AUC y AP mejoran con IC95 sin cero en test 2024+). Columnas `loc200_*` conservadas (miden ≤ 300 km). Ver `docs/PLAN_PRODUCCION_MODELO.md`.
+
 ## 2026-11-25 — Todo M4,0 (modelo v6)
 - Decisión del usuario: sin umbral M4,5. Features, dataset, entrenamiento, `/vigilar`, web y pruebas pasan a M4,0; modelo v6; historia GK de 2 600 días con caché. Detalle en `docs/PLAN_PRODUCCION_MODELO.md`.
 

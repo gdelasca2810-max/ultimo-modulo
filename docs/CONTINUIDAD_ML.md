@@ -88,3 +88,9 @@ Para desplegar cualquier modelo T3 sería necesario adaptar `/vigilar` para calc
 - Artefacto activo: `api/modelo_sismos_v6.joblib` (reemplaza al v5, retirado). Métricas e interpretación honesta (sin mejora estadísticamente demostrada, sin deterioro) en `docs/PLAN_PRODUCCION_MODELO.md`.
 - La historia de mainshocks para el declustering en `/vigilar` pasó a 2 600 días por las cadenas de réplicas; con caché de 12 h.
 - Donde `docs/auditoria_datos_modelo.md`, `docs/diccionario_dataset_modelo.md`, `docs/definicion_geografica_zonas.md` o `docs/regla_target_m65_7d.md` mencionen M4,5 para estas variables, vale este archivo.
+
+## Actualización 2026-11-26 (v7: radio local 300 km)
+
+- Exploración de profundidad y radio (detalle en `docs/PLAN_PRODUCCION_MODELO.md`): el somero 5–40 km es la profundidad con señal estable; quitar el filtro de profundidad no mejora; 300 km mejora el modelo en validación cruzada y en test. Aplicado por decisión del usuario.
+- `RADIO_LOCAL_KM = 300` en `api/features_t3.py`; las columnas `loc200_*` conservan su nombre pero miden ≤ 300 km. Modelo activo `api/modelo_sismos_v7.joblib` (reemplaza al v6). En test 2024+: AUC +0,016 y AP +0,007 con IC95 que excluyen el cero, Brier sin deterioro.
+- Identidad producción/entrenamiento: 2 000/2 000 con datos reales.

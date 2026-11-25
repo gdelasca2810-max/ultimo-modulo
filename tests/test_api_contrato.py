@@ -126,7 +126,7 @@ class ContratoApi(unittest.TestCase):
         self.assertEqual(zonas, set(main.artefacto["tasas_zona"]))
 
     def test_artefacto_activo_cumple_el_contrato_interno(self):
-        self.assertTrue(main.artefacto["version"].startswith("v6"))
+        self.assertTrue(main.artefacto["version"].startswith("v7"))
         self.assertTrue(all(0 < t < 1 for t in main.artefacto["tasas_zona"].values()))
         self.assertTrue(all(e["peso"] >= 0 for e in main.artefacto["escalones"]))
         self.assertEqual(set(main.artefacto["metricas_test"]),

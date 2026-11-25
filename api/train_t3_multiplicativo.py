@@ -25,8 +25,8 @@ import criterios_despliegue as cd
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "candidate" / "zona_dia_t3_reconstruido.csv"
-VERSION = "v6_t3_m40_multiplicativo"
-SALIDA = Path(__file__).resolve().parent / "modelo_sismos_v6.joblib"
+VERSION = "v7_t3_m40_r300_multiplicativo"
+SALIDA = Path(__file__).resolve().parent / "modelo_sismos_v7.joblib"
 TARGET = "y_M65_7d"
 # Features reproducibles por /vigilar con la misma definición (api/features_t3.py).
 FEATURES = ["loc200_n96_sin45", "loc200_n96_con"]
