@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 import re
@@ -12,6 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client
 
+try:  # Render arranca con `uvicorn api.main:app` (paquete); los tests importan `main` suelto
+    from .features_t3 import HISTORIA_GK_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo, cargar_zonas, features_vivas
+except ImportError:
+    from features_t3 import HISTORIA_GK_DIAS, UMBRAL_MAINSHOCK_GK, W96, Catalogo, cargar_zonas, features_vivas
+
 app = FastAPI(title="API Riesgo Sísmico Relativo (USGS)")
 
 app.add_middleware(
@@ -21,8 +28,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL_PATH = Path(__file__).parent / "modelo_sismos.joblib"
+# v5 = modelo multiplicativo T3 cuyas features calcula /vigilar con las MISMAS reglas que el entrenamiento
+# (api/features_t3.py). El artefacto v2 anterior (modelo_sismos.joblib) queda solo como histórico/rollback
+# del modelo: su media/p90 tienen fuga temporal y NO son compatibles con las features T3 en vivo.
+MODEL_PATH = Path(__file__).parent / os.getenv("MODELO_ARTEFACTO", "modelo_sismos_v5.joblib")
 artefacto = joblib.load(MODEL_PATH)
+ZONAS_T3 = cargar_zonas()
+
 
 ZONAS_COORDS = {
     "Alaska/Aleutianas": (54.0, -163.0),
@@ -57,15 +69,55 @@ class ConsultaRiesgo(BaseModel):
     lat_n96_prof70_150: int
 
 
+BASELINE_PATH = Path(__file__).parent / "baseline_tasa_zona.json"
+VERSION_BASELINE = "baseline_tasa_zona"
+try:
+    baseline_zona = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    VERSION_BASELINE = baseline_zona.get("version", VERSION_BASELINE)
+except (OSError, ValueError):
+    baseline_zona = None  # el modo baseline responderá 503 en lugar de inventar tasas
+
+
+def modo_baseline_activo() -> bool:
+    """Modo explícito (MODO_PREDICCION=baseline_zona); por defecto se usa el modelo del artefacto.
+
+    Se lee en cada llamada para poder activarlo/desactivarlo con una variable de entorno
+    sin tocar el artefacto ni redeplegar código.
+    """
+    return os.getenv("MODO_PREDICCION", "modelo").strip().lower() in {"baseline_zona", "baseline"}
+
+
 def calcular_prediccion(datos: ConsultaRiesgo):
-    if datos.zona not in artefacto["tasas_zona"]:
+    # No se sustituyen zonas por aliases geográficos no validados: una zona
+    # ausente debe fallar de forma explícita, no heredar riesgo de otra región.
+    zona_modelo = datos.zona
+    if zona_modelo not in artefacto["tasas_zona"]:
         raise HTTPException(status_code=404, detail=f"Zona no reconocida: {datos.zona}")
 
-    tasa_base = float(artefacto["tasas_zona"][datos.zona])
-    media_96h = float(artefacto["medias_96h"][datos.zona])
+    tasa_base = float(artefacto["tasas_zona"][zona_modelo])
+
+    if modo_baseline_activo():
+        # Fallback seguro: la probabilidad es la tasa histórica SUAVIZADA de la zona
+        # (api/baseline_tasa_zona.json; el artefacto activo tiene una zona con tasa 0).
+        # Mantiene el contrato JSON exacto; el multiplicador es 1.0 por definición (sin
+        # señal de modelo) y nunca marca enjambre, así que /vigilar no emite alertas Telegram.
+        entrada = (baseline_zona or {}).get("zonas", {}).get(zona_modelo)
+        if entrada is None:
+            raise HTTPException(status_code=503, detail="Baseline por zona no disponible para esta zona")
+        tasa_baseline = float(entrada["tasa"])
+        return {
+            "zona": datos.zona,
+            "version_modelo": VERSION_BASELINE,
+            "probabilidad_m65_7d": round(tasa_baseline, 5),
+            "tasa_historica_7d": round(tasa_baseline, 5),
+            "multiplicador_riesgo": 1.0,
+            "alerta_enjambre": False,
+        }
+
+    media_96h = float(artefacto.get("medias_96h", {}).get(zona_modelo, 0.0))
 
     if artefacto.get("version") == "v2_features_11a":
-        p90_local = float(artefacto.get("p90_zona", {}).get(datos.zona, media_96h))
+        p90_local = float(artefacto.get("p90_zona", {}).get(zona_modelo, media_96h))
         loc200_m45plus = max(0, datos.loc200_n96_con - datos.loc200_n96_sin45)
         ratio_actividad = datos.loc200_n96_con / (media_96h + 0.25)
         exceso_p90 = datos.loc200_n96_con - p90_local
@@ -84,22 +136,42 @@ def calcular_prediccion(datos: ConsultaRiesgo):
             concentracion,
         ]], dtype=float)
     else:
+        # El artefacto v3 usa estrictamente las cuatro variables permitidas.
+        # Mantener este vector en el orden almacenado evita romper /predict.
+        valores = {
+            "loc200_n96_con": datos.loc200_n96_con,
+            "loc200_n96_sin45": datos.loc200_n96_sin45,
+            "loc500_n96_con": datos.loc500_n96_con,
+            "lat_n96_prof70_150": datos.lat_n96_prof70_150,
+        }
+        features = artefacto.get("features", list(valores))
+        desconocidas = set(features) - set(valores)
+        if desconocidas:
+            raise RuntimeError(f"Artefacto incompatible; features no soportadas: {sorted(desconocidas)}")
         X = np.array([[
-            datos.loc200_n96_con,
-            datos.loc200_n96_sin45,
-            datos.loc500_n96_con,
-            datos.lat_n96_prof70_150,
-            media_96h,
+            valores[feature] for feature in features
         ]], dtype=float)
 
-    prob_7d = float(artefacto["modelo"].predict_proba(X)[0][1])
+    if str(artefacto.get("version", "")).startswith("v5"):
+        # logit(p) = logit(tasa_zona) + sesgo + suma de pesos de los escalones activados
+        valores_v5 = {
+            "loc200_n96_con": datos.loc200_n96_con,
+            "loc200_n96_sin45": datos.loc200_n96_sin45,
+        }
+        eta = math.log(tasa_base / (1.0 - tasa_base)) + float(artefacto.get("sesgo", 0.0))
+        eta += sum(float(e["peso"]) for e in artefacto["escalones"] if valores_v5[e["feature"]] >= e["umbral"])
+        prob_7d = 1.0 / (1.0 + math.exp(-eta))
+    else:
+        prob_7d = float(artefacto["modelo"].predict_proba(X)[0][1])
     multiplicador = round(prob_7d / tasa_base, 2) if tasa_base > 0 else 1.0
 
-    es_elevado = (
-        multiplicador >= 2.0
-        and prob_7d >= 0.025
-        and datos.loc200_n96_con >= 3
+    # v5: «enjambre» = al menos 3 sismos M4.5+ SIN réplicas a <=200 km (la señal que el modelo premia).
+    local_activo = (
+        datos.loc200_n96_sin45 >= 3
+        if str(artefacto.get("version", "")).startswith("v5")
+        else datos.loc200_n96_con >= 3
     )
+    es_elevado = multiplicador >= 2.0 and prob_7d >= 0.025 and local_activo
 
     return {
         "zona": datos.zona,
@@ -150,7 +222,7 @@ def describir_nivel_usuario(
         if loc200_con == 0 and prof70_150 > 0:
             estado = "🟡 MODERADO (Solo sismos de profundidad intermedia en observación)"
             resumen_simple = (
-                "Solo hay sismos de profundidad intermedia (70–150 km, a menos de 500 km); "
+                "Solo hay sismos de profundidad intermedia (M4,5+ a 70–150 km, en las regiones de vigilancia de la zona); "
                 "ninguno a menos de 200 km."
             )
         else:
@@ -198,7 +270,7 @@ def construir_mensaje_alerta(zona, estado_txt, resumen_simple, frec_txt, info, u
         )
     prof_txt = (
         "ninguno de profundidad intermedia (70–150 km)" if profundos == 0
-        else f"{_plural(profundos, 'sismo', 'sismos')} de profundidad intermedia (70–150 km, dentro de los 500 km)"
+        else f"{_plural(profundos, 'sismo', 'sismos')} de profundidad intermedia (M4,5+ a 70–150 km, en las regiones de vigilancia de la zona)"
     )
     if cercanos == 0 and regionales == 0:
         impulsor = "Sin sismos cercanos en 96 h: el valor viene solo del cálculo estadístico del modelo."
@@ -288,6 +360,42 @@ def enviar_lotes_telegram(tg_token: str, chat_id: str, notificaciones: list) -> 
             ).raise_for_status()
 
 
+USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+
+
+def descargar_eventos_usgs(inicio: datetime, fin: datetime, min_mag: float) -> list:
+    """Terremotos de ComCat entre inicio y fin (UTC), M>=min_mag. Devuelve (id, epoch_s, lat, lon, prof, mag)."""
+    r = requests.get(USGS_URL, params={
+        "format": "csv", "starttime": inicio.strftime("%Y-%m-%dT%H:%M:%S"),
+        "endtime": fin.strftime("%Y-%m-%dT%H:%M:%S"), "minmagnitude": min_mag,
+        "eventtype": "earthquake", "orderby": "time-asc", "limit": 20000,
+    }, timeout=60)
+    r.raise_for_status()
+    filas = []
+    for fila in csv.DictReader(io.StringIO(r.text)):
+        try:
+            t = datetime.fromisoformat(fila["time"].replace("Z", "+00:00")).timestamp()
+            filas.append((fila["id"], int(t), float(fila["latitude"]), float(fila["longitude"]),
+                          float(fila["depth"]), float(fila["mag"])))
+        except (KeyError, ValueError):
+            continue  # evento incompleto: igual que el generador histórico (exige lat, lon, prof y mag)
+    return filas
+
+
+def construir_catalogo_t3(ahora: datetime):
+    """Catálogo con lo necesario para las features T3: M>=4.0 de las últimas 96 h y los M>=4.8 de los
+    últimos HISTORIA_GK_DIAS días (mainshocks para el declustering Gardner-Knopoff idéntico al del entrenamiento)."""
+    inicio_ventana = ahora - timedelta(seconds=W96)
+    recientes = descargar_eventos_usgs(inicio_ventana, ahora, 4.0)
+    historia = descargar_eventos_usgs(ahora - timedelta(days=HISTORIA_GK_DIAS), inicio_ventana, UMBRAL_MAINSHOCK_GK)
+    por_id = {e[0]: e for e in historia}
+    por_id.update({e[0]: e for e in recientes})
+    ev = list(por_id.values())
+    cat = Catalogo([e[1] for e in ev], [e[2] for e in ev], [e[3] for e in ev],
+                   [e[4] for e in ev], [e[5] for e in ev])
+    return cat, len(recientes)
+
+
 @app.api_route("/vigilar", methods=["GET", "POST"])
 def ejecutar_vigilancia(key: str = Query(default="")):
     cron_secret = os.getenv("CRON_SECRET", "")
@@ -299,50 +407,24 @@ def ejecutar_vigilancia(key: str = Query(default="")):
     tg_token = os.environ["TELEGRAM_BOT_TOKEN"]
     tg_chat_id = os.environ["TELEGRAM_CHAT_ID"]
 
-    inicio = (datetime.now(timezone.utc) - timedelta(hours=96)).strftime("%Y-%m-%dT%H:%M:%S")
-    resp = requests.get(
-        "https://earthquake.usgs.gov/fdsnws/event/1/query",
-        params={"format": "geojson", "starttime": inicio, "minmagnitude": 2.5, "limit": 20000},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    eventos = resp.json().get("features", [])
+    ahora = datetime.now(timezone.utc)
+    catalogo, n_recientes = construir_catalogo_t3(ahora)
+    features = features_vivas(ZONAS_T3, catalogo, int(ahora.timestamp()))
 
     sb = create_client(supabase_url, supabase_key)
     zonas_db = sb.table("zonas_sismicas").select("*").execute().data or []
-    lista_zonas = [z["zona"] for z in zonas_db] if zonas_db else list(ZONAS_COORDS.keys())
+    lista_zonas = [z["zona"] for z in zonas_db] if zonas_db else list(ZONAS_T3.keys())
     columnas_existentes = set(zonas_db[0].keys()) if zonas_db else set()
 
     resultados_zona = {}
     detalles_zona = {}
     for zona in lista_zonas:
-        fila = next((z for z in zonas_db if z["zona"] == zona), {})
-        if fila.get("lat_centro") is not None and fila.get("lon_centro") is not None:
-            clat, clon = float(fila["lat_centro"]), float(fila["lon_centro"])
-        elif zona in ZONAS_COORDS:
-            clat, clon = ZONAS_COORDS[zona]
-        else:
+        # Solo zonas con geometría T3 y con tasa en el artefacto: sin alias ni coordenadas alternativas.
+        if zona not in ZONAS_T3 or zona not in artefacto["tasas_zona"]:
             continue
-        if zona not in artefacto["tasas_zona"]:
-            continue
-        loc200_con = loc200_sin45 = loc500_con = prof70_150 = 0
-
-        for ev in eventos:
-            props = ev.get("properties") or {}
-            coords = (ev.get("geometry") or {}).get("coordinates") or [0, 0, 0]
-            mag = props.get("mag")
-            if mag is None:
-                continue
-            lon, lat, depth = coords[0], coords[1], coords[2] or 0.0
-            dist = haversine_km(clat, clon, lat, lon)
-            if dist <= 500:
-                loc500_con += 1
-                if 70 <= depth <= 150:
-                    prof70_150 += 1
-            if dist <= 200:
-                loc200_con += 1
-                if mag < 4.5:
-                    loc200_sin45 += 1
+        f = features[zona]
+        loc200_con, loc200_sin45 = f["loc200_n96_con"], f["loc200_n96_sin45"]
+        loc500_con, prof70_150 = f["loc500_n96_con"], f["lat_n96_prof70_150"]
 
         pred = calcular_prediccion(ConsultaRiesgo(
             zona=zona,
@@ -355,7 +437,8 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         detalles_zona[zona] = {
             "loc200_con": loc200_con,
             "loc200_sin45": loc200_sin45,
-            "loc200_m45plus": max(0, loc200_con - loc200_sin45),
+            # T3: loc200_n96_sin45 = M4.5+ sin réplicas (no «leves <M4.5»).
+            "loc200_m45plus": loc200_sin45,
             "loc500_con": loc500_con,
             "prof70_150": prof70_150,
         }
@@ -386,7 +469,11 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         umbral = float(a.get("umbral_multiplicador", 2.0))
         info = resultados_zona.get(zona)
         det = detalles_zona.get(zona, {})
-        if info and info["multiplicador_riesgo"] >= umbral:
+        # Un multiplicador alto con tasa histórica minúscula no es, por sí
+        # solo, un enjambre. Evita notificaciones automáticas sin actividad
+        # local verificable; /predict sigue exponiendo la estimación completa.
+        if (info and info["multiplicador_riesgo"] >= umbral
+                and info["alerta_enjambre"]):
             cercanos = det.get("loc200_con", 0)
             m45_plus = det.get("loc200_m45plus", 0)
             regionales = det.get("loc500_con", 0)
@@ -416,7 +503,7 @@ def ejecutar_vigilancia(key: str = Query(default="")):
         alerta_enviada = True
 
     return {
-        "eventos_usgs_96h": len(eventos),
+        "eventos_usgs_96h": n_recientes,
         "version_modelo": artefacto.get("version", "v1"),
         "zonas_actualizadas": len(resultados_zona),
         "alertas_evaluadas": len(alertas),
@@ -682,7 +769,8 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             continue
         loc200_con = int(z.get("loc200_n96_con") or 0)
         loc200_sin45 = int(z.get("loc200_n96_sin45") or 0)
-        loc200_m45plus = max(0, loc200_con - loc200_sin45)
+        # T3: loc200_n96_sin45 = M4.5+ sin réplicas; loc200_n96_con incluye además M4.0-4.4 y réplicas.
+        loc200_m45plus = loc200_sin45
         loc500_con = int(z.get("loc500_n96_con") or 0)
         prof70_150 = int(z.get("lat_n96_prof70_150") or 0)
 
@@ -705,9 +793,9 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             prob_val,
             f"- {nombre}: estado={estado_txt}, prob_7d={prob_val*100:.2f}%, "
             f"habitual_7d={base_val*100:.2f}% ({frec_txt}), "
-            f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} moderados M4.5+ y {loc200_sin45} leves <M4.5), "
+            f"multiplicador={mult}x, sismos_cercanos_200km={loc200_con} ({loc200_m45plus} de M4.5+ sin réplicas y {max(0, loc200_con - loc200_sin45)} menores o réplicas), "
             f"sismos_regionales_500km={loc500_con} (incluye los de 200 km; {max(0, loc500_con - loc200_con)} están en el rango 200–500 km), "
-            f"sismos_prof_intermedia_70_150km_dentro_de_500km={prof70_150}"
+            f"sismos_prof_intermedia_M45_70_150km_regiones_laterales={prof70_150}"
         ))
 
     evaluaciones.sort(key=lambda x: x[0], reverse=True)
@@ -743,9 +831,9 @@ def procesar_consulta_telegram(tg_token: str, chat_id: str, texto_usuario: str, 
             "🚦 <b>Nivel de actividad actual:</b> [Copia exactamente el 'estado' proporcionado en los datos]\n"
             "⚠️ <b>Probabilidad de terremoto fuerte (M6.5+ esta semana):</b> <b>[prob_7d]</b> — En esta zona lo habitual en una semana tranquila es [habitual_7d] ([equivalencia en semanas]), por lo que hoy está a <b>[multiplicador]x</b> de su nivel normal.\n"
             "📊 <b>¿En qué se basa este resultado? (últimas 96 horas):</b>\n"
-            "• Sismos cercanos (&lt;200 km): [sismos_cercanos_200km] ([moderados M4.5+] moderados M4.5+ y [leves] leves)\n"
+            "• Sismos cercanos (&lt;200 km, M4,0+ de 5–40 km): [sismos_cercanos_200km] (de ellos [M4.5+ sin réplicas] M4.5+ sin réplicas)\n"
             "• Sismos en la región (&lt;500 km, incluye los cercanos): [sismos_regionales_500km] — si los cercanos son 0, aclara que esos sismos están en el rango de 200–500 km, no a menos de 200 km\n"
-            "• Sismos de profundidad intermedia (70–150 km, dentro de 500 km): [sismos_prof_intermedia_70_150km_dentro_de_500km]\n"
+            "• Sismos de profundidad intermedia (M4,5+ a 70–150 km, en las regiones de vigilancia de la zona): [sismos_prof_intermedia_M45_70_150km_regiones_laterales]\n"
             "💡 <b>En palabras simples:</b> [1 o 2 frases muy claras y coherentes con los números reales]\n\n"
             "Si el usuario pregunta por varias zonas o por las zonas más activas, muestra el Top 3 ordenado por mayor probabilidad real (prob_7d) usando ese mismo formato.\n\n"
             "Datos calculados en tiempo real (ordenados de mayor a menor probabilidad real):\n"

@@ -1,0 +1,9 @@
+{
+  "geometria_documentada": true,
+  "documentada_en": ["config/zonas_t3_historicas.json", "docs/definicion_geografica_zonas.md"],
+  "geometria_validada_sismologicamente": false,
+  "origen": "Cajas DEFINIDA POR CLAUDE - revisar (generador T3 original). Reproducen el historico (>=99,5% de coincidencia), no son geometria sismologicamente validada.",
+  "revisor": null,
+  "fecha_revision": null,
+  "nota": "Limitacion conocida: presentar las zonas como regiones aproximadas. Poner geometria_validada_sismologicamente=true solo tras revision humana documentada."
+}

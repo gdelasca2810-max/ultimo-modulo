@@ -3,4 +3,7 @@ __pycache__/
 .vercel/
 .env*
 *.csv
+data/raw/
+data/candidate/
+api/*_candidate.joblib
 .vercel

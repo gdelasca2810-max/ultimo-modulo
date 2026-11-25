@@ -1,0 +1,114 @@
+{
+  "version": "baseline_tasa_zona_v1",
+  "descripcion": "Tasa historica suavizada de M6.5+ a 7 dias por zona. No es un modelo ML.",
+  "objetivo": "y_M65_7d",
+  "periodo": [
+    "2016-01-05",
+    "2026-09-26"
+  ],
+  "peso_prior": 60.0,
+  "dataset_sha256": "58a0fe38175fcbc46853dd2c49b8d4625bff70a99920ed90cfcf8c02a98b7c0e",
+  "tasa_global": 0.018594,
+  "zonas": {
+    "Alaska/Aleutianas": {
+      "positivos": 77,
+      "filas": 3918,
+      "tasa": 0.019637
+    },
+    "Antillas/Caribe": {
+      "positivos": 21,
+      "filas": 3918,
+      "tasa": 0.005559
+    },
+    "Chile Central/Sur": {
+      "positivos": 42,
+      "filas": 3918,
+      "tasa": 0.010839
+    },
+    "Chile/Peru (Lima-Valpo)": {
+      "positivos": 91,
+      "filas": 3918,
+      "tasa": 0.023156
+    },
+    "Costa O EEUU": {
+      "positivos": 35,
+      "filas": 3918,
+      "tasa": 0.009079
+    },
+    "Filipinas Luzon": {
+      "positivos": 14,
+      "filas": 3918,
+      "tasa": 0.0038
+    },
+    "Filipinas Mindanao": {
+      "positivos": 77,
+      "filas": 3918,
+      "tasa": 0.019637
+    },
+    "Indonesia Banda/Timor": {
+      "positivos": 63,
+      "filas": 3918,
+      "tasa": 0.016118
+    },
+    "Indonesia Sonda": {
+      "positivos": 58,
+      "filas": 3918,
+      "tasa": 0.014861
+    },
+    "Japon NE": {
+      "positivos": 70,
+      "filas": 3918,
+      "tasa": 0.017877
+    },
+    "Japon Nankai/Kyushu": {
+      "positivos": 7,
+      "filas": 3918,
+      "tasa": 0.00204
+    },
+    "Kamchatka/Kuriles": {
+      "positivos": 92,
+      "filas": 3918,
+      "tasa": 0.023408
+    },
+    "Mediterraneo": {
+      "positivos": 49,
+      "filas": 3918,
+      "tasa": 0.012598
+    },
+    "Mexico/Centroam": {
+      "positivos": 77,
+      "filas": 3918,
+      "tasa": 0.019637
+    },
+    "PNG/Nueva Bretana": {
+      "positivos": 136,
+      "filas": 3918,
+      "tasa": 0.034468
+    },
+    "Salomon/Vanuatu": {
+      "positivos": 169,
+      "filas": 3918,
+      "tasa": 0.042764
+    },
+    "Sandwich del Sur": {
+      "positivos": 59,
+      "filas": 3918,
+      "tasa": 0.015112
+    },
+    "Taiwan": {
+      "positivos": 28,
+      "filas": 3918,
+      "tasa": 0.007319
+    },
+    "Tonga/Kermadec/NZ": {
+      "positivos": 278,
+      "filas": 3918,
+      "tasa": 0.070165
+    },
+    "Venezuela/Caribe": {
+      "positivos": 14,
+      "filas": 3918,
+      "tasa": 0.0038
+    }
+  }
+}

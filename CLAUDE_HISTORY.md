@@ -6,6 +6,18 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
+## 2026-11-25 — Modelo v5 y /vigilar alineado con el entrenamiento
+- `api/features_t3.py` (única definición de features), `/vigilar` M4,0+ con Gardner–Knopoff, modelo multiplicativo v5 (supera al baseline en test 2024+), textos de web y Telegram actualizados, 31 pruebas. Sin commit/push.
+- Pendiente (usuario): revisar `git diff`, commit sin el workflow, desplegar API y web.
+
+## 2026-11-25 — Producción segura del modelo (baseline opcional)
+- Modo `MODO_PREDICCION=baseline_zona` (apagado por defecto) con `api/baseline_tasa_zona.json`; `api/criterios_despliegue.py`; 25 pruebas en `tests/`. Modelo activo intacto. Ver `docs/PLAN_PRODUCCION_MODELO.md`.
+- Pendiente (usuario): decidir alertas/web con baseline y validar las cajas.
+
+## 2026-11-25 — Auditoría de reproducibilidad del modelo
+- Solo lectura: `docs/auditoria_datos_modelo.md`, `docs/diccionario_dataset_modelo.md`, `docs/zonas_modelo.csv`, `scripts/verificar_reproducibilidad_modelo.py` y `scripts/descargar_catalogo_usgs.py` (sin ejecutar). Sin commit.
+- Hallazgos: fuga en `media_96h_zona`/`p90_con_11a`, generador y catálogo crudo ausentes, Sumatra/Andaman fuera del modelo, 202 episodios efectivos.
+
 ## 2026-11-25 — Etiquetas de actividad coherentes y fallo del cron
 - Web y Telegram usan la misma lógica de estado. Columnas renombradas: Radio ≤ 200 km, Radio ≤ 500 km (nueva) y Profundidad intermedia (70–150 km, dentro de 500 km). Cada fila y mensaje explica qué impulsa el número. Commit 20b7443.
 - Cron de las 16 h falló («response larger than the allowed limit»): hipótesis, arranque en frío de Render. `/vigilar` solo pesa ~194 B.
