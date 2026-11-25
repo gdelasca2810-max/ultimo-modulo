@@ -16,9 +16,18 @@ Verificado con datos reales: con solo lo que `/vigilar` descargaría, las 4 feat
 
 `logit(p) = logit(tasa_zona) + sesgo + Σ pesos de escalones activados` — la «tasa normal» de la zona multiplicada por un factor que sube cuando hay actividad local real:
 
-- 3 o más sismos M4,5+ **sin réplicas** a ≤ 200 km en 96 h (+0,29),
-- 5 o más sismos M4,5+ sin réplicas (+0,32),
-- 5 o más sismos M4,0+ a ≤ 200 km (+0,31). Máximo posible ≈ 2,5×.
+- 3 o más sismos M4,5+ **sin réplicas** a ≤ 200 km en 96 h,
+- 5 o más sismos M4,5+ sin réplicas,
+- 5 o más sismos M4,0+ a ≤ 200 km.
+
+**Dos ajustes distintos (importante):**
+
+| | Pesos de los 3 escalones | Multiplicador máximo | Uso |
+|---|---|---|---|
+| Modelo **evaluado** (ajuste ≤ 2023-12-24) | 0,29 / 0,32 / 0,31 | ≈ 2,5× | produce las métricas de test de abajo |
+| Modelo **desplegado** (reajuste con todo 2016–2026) | 0,56 / 0,48 / 0,57 | ≈ 4,9× | `api/modelo_sismos_v5.joblib` |
+
+El reajuste incorpora los casos de cola de 2024–2026 (con ≥ 3 sismos locales, 8 positivos en 29 filas), así que los factores son mayores. **Las métricas de test corresponden al modelo evaluado, no al desplegado**: el desplegado no puede validarse fuera de muestra con estos datos. Con los pesos desplegados, un enjambre de 3–4 sismos M4,5+ da ≈ 1,7× y con ≥ 5 sismos ≈ 2,8–3,1×; con los evaluados, solo se llegaba a 2× con los tres escalones a la vez. Si se prefiere la opción conservadora, basta copiar los pesos del modelo evaluado al artefacto (decisión de producto pendiente).
 
 Los escalones se fijaron a priori a partir de la señal medida (tasa observada/esperada de 10–30× en la cola, en train y en test) y el único hiperparámetro (λ) se eligió con validación cruzada por años de 2016–2023. El test 2024+ no se usó para elegir nada.
 
@@ -30,12 +39,12 @@ Test 2024-01-08 en adelante (19 860 filas, 299 positivos), frente a la tasa hist
 | AP | 0,02917 | 0,02812 | [+0,00003, +0,00256] |
 | Brier | 0,01482 | 0,01484 | [−0,00004, 0,0000] |
 
-La mejora es **real pero modesta**: la señal está en una cola rara (en test, ~30 filas con ≥ 3 sismos locales). Por eso el multiplicador de v5 es ≈ 1,0× casi siempre y solo llega a 2× o más con un enjambre local verificable.
+La mejora es **real pero modesta**: la señal está en una cola rara (en test, ~30 filas con ≥ 3 sismos locales). Por eso el multiplicador de v5 es ≈ 1,0× casi siempre y solo sube con un enjambre local verificable.
 
 ## 3. Alertas (qué cambia respecto a antes)
 
 - Regla de alerta: multiplicador ≥ umbral del usuario **y** «enjambre» = multiplicador ≥ 2, probabilidad ≥ 2,5 % y ≥ 3 sismos M4,5+ sin réplicas a ≤ 200 km.
-- Habrá **menos alertas que antes**: los «2×» del modelo v2 salían en buena parte de la fuga y del desajuste de variables. Una zona de tasa muy baja (p. ej. Nankai, 0,2 %) nunca alerta por un multiplicador artificial: 2× sigue siendo < 2,5 %.
+- Con los pesos desplegados el umbral 2× se alcanza con ≥ 5 sismos M4,5+ sin réplicas a ≤ 200 km (o ≥ 3 más ≥ 5 M4,0+). Habrá **menos alertas que antes**: los «2×» del modelo v2 salían en buena parte de la fuga y del desajuste de variables. Una zona de tasa muy baja (p. ej. Nankai, 0,2 %) nunca alerta por un multiplicador artificial: 2× sigue siendo < 2,5 %.
 - Los textos de la web y de Telegram ya describen las columnas con su definición real (M4,0+ someros; M4,5+ sin réplicas; profundidad intermedia en las zonas laterales).
 
 ## 4. Criterios obligatorios (cumplidos por v5) — `api/criterios_despliegue.py`
