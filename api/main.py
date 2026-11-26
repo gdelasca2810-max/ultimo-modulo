@@ -4,13 +4,15 @@ import json
 import os
 import re
 import math
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import joblib
 import numpy as np
 import requests
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from supabase import create_client
 
@@ -1076,13 +1078,164 @@ def telegram_webhook(update: dict, background_tasks: BackgroundTasks):
     return {"ok": True}
 
 
-# Montaje del servidor MCP remoto sobre SSE (protegido con Bearer Token)
-try:
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mcp"))
-    from server import obtener_mcp_asgi_app
-    mcp_asgi = obtener_mcp_asgi_app()
-    app.mount("/mcp", mcp_asgi)
-    app.mount("/sse", mcp_asgi)
-except Exception as e:
-    print(f"[mcp] No se pudo montar servidor MCP remoto: {e}", flush=True)
+# ─── MCP over SSE — endpoint nativo FastAPI ────────────────────────────────
+# Implementación directa sin montar sub-app ASGI para máxima compatibilidad.
+# Protocolo MCP/SSE: GET /sse abre el stream; POST /sse envía mensajes.
+
+_MCP_TOKEN = os.getenv("MCP_AUTH_TOKEN", "sismo_evaluador_2026")
+
+def _verificar_token(request: Request) -> bool:
+    """Comprueba Bearer token en header o ?token= en query string."""
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() == _MCP_TOKEN
+    return request.query_params.get("token", "") == _MCP_TOKEN
+
+
+def _mcp_tools_manifest() -> dict:
+    """Devuelve el manifiesto JSON-RPC de herramientas MCP disponibles."""
+    return {
+        "tools": [
+            {"name": "buscar_sismos_zona",
+             "description": "Consulta USGS ComCat en tiempo real (M4.0+, 300 km, 96h) para una zona sísmica.",
+             "inputSchema": {"type": "object", "properties": {"zona": {"type": "string"}, "horas": {"type": "integer", "default": 96}}, "required": ["zona"]}},
+            {"name": "predecir_riesgo_sismico",
+             "description": "Calcula probabilidad M6.5+ a 7d y 48h con modelo v8 regionalizado (4 regímenes tectónicos).",
+             "inputSchema": {"type": "object", "properties": {"zona": {"type": "string"}}, "required": ["zona"]}},
+            {"name": "comparar_baseline_zona",
+             "description": "Compara predicción actual vs tasa histórica real de la zona en Supabase.",
+             "inputSchema": {"type": "object", "properties": {"zona": {"type": "string"}}, "required": ["zona"]}},
+            {"name": "consultar_sismos_usgs",
+             "description": "Query libre USGS ComCat por lat/lon, radio, magnitud mínima y ventana temporal.",
+             "inputSchema": {"type": "object", "properties": {
+                 "lat": {"type": "number"}, "lon": {"type": "number"},
+                 "radio_km": {"type": "number", "default": 300},
+                 "magnitud_min": {"type": "number", "default": 4.0},
+                 "horas": {"type": "integer", "default": 96}}, "required": ["lat", "lon"]}},
+            {"name": "consultar_zonas_riesgo_supabase",
+             "description": "Lee tabla zonas_riesgo_hoy de Supabase con el riesgo calculado hoy para las 20 zonas.",
+             "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "consultar_sismos_historicos_supabase",
+             "description": "Busca sismos históricos en la BD Supabase por zona y rango de fechas.",
+             "inputSchema": {"type": "object", "properties": {"zona": {"type": "string"}, "dias": {"type": "integer", "default": 30}}, "required": ["zona"]}},
+            {"name": "verificar_servicio_render",
+             "description": "Health-check del backend Render con latencia.",
+             "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "disparar_vigilar_render",
+             "description": "Lanza el worker de vigilancia USGS en Render.",
+             "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "verificar_frontend_vercel",
+             "description": "Comprueba que el dashboard Vercel esté activo.",
+             "inputSchema": {"type": "object", "properties": {}}},
+        ]
+    }
+
+
+async def _ejecutar_herramienta(name: str, arguments: dict) -> dict:
+    """Ejecuta la herramienta MCP solicitada delegando en mcp/server.py."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mcp"))
+        import server as mcp_server  # noqa: F401
+        fn = getattr(mcp_server, name, None)
+        if fn is None:
+            return {"error": f"Herramienta '{name}' no encontrada"}
+        import inspect
+        result = fn(**arguments) if not inspect.iscoroutinefunction(fn) else await fn(**arguments)
+        return result if isinstance(result, dict) else {"resultado": result}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/sse")
+@app.get("/sse/")
+async def mcp_sse_stream(request: Request):
+    """Endpoint SSE del servidor MCP. Requiere Authorization: Bearer <token> o ?token=<token>."""
+    if not _verificar_token(request):
+        return Response(
+            content='{"error": "Unauthorized: envíe Authorization: Bearer sismo_evaluador_2026 o ?token=sismo_evaluador_2026"}',
+            status_code=401,
+            media_type="application/json",
+        )
+
+    async def event_stream():
+        # Mensaje de bienvenida con lista de herramientas
+        manifest = _mcp_tools_manifest()
+        welcome = json.dumps({
+            "jsonrpc": "2.0", "method": "notifications/initialized",
+            "params": {"serverInfo": {"name": "Monitor Riesgo Sismico", "version": "8.0"},
+                       "capabilities": {"tools": manifest}}
+        }, ensure_ascii=False)
+        yield f"event: message\ndata: {welcome}\n\n"
+
+        # Mantener stream vivo con heartbeat cada 30s
+        import asyncio
+        while True:
+            await asyncio.sleep(30)
+            ts = datetime.now(timezone.utc).isoformat()
+            yield f"event: ping\ndata: {json.dumps({'ts': ts})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.post("/sse")
+@app.post("/sse/")
+async def mcp_sse_message(request: Request):
+    """Recibe mensajes JSON-RPC del cliente MCP y ejecuta la herramienta."""
+    if not _verificar_token(request):
+        return Response(
+            content='{"error": "Unauthorized"}',
+            status_code=401,
+            media_type="application/json",
+        )
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON inválido")
+
+    method = body.get("method", "")
+    rpc_id = body.get("id", 1)
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0", "id": rpc_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {"name": "Monitor Riesgo Sismico", "version": "8.0"},
+                "capabilities": {"tools": _mcp_tools_manifest()},
+            }
+        }
+
+    if method == "tools/list":
+        return {"jsonrpc": "2.0", "id": rpc_id, "result": _mcp_tools_manifest()}
+
+    if method == "tools/call":
+        params = body.get("params", {})
+        tool_name = params.get("name", "")
+        arguments = params.get("arguments", {})
+        result = await _ejecutar_herramienta(tool_name, arguments)
+        return {
+            "jsonrpc": "2.0", "id": rpc_id,
+            "result": {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}]}
+        }
+
+    return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": -32601, "message": f"Método '{method}' no soportado"}}
+
+
+@app.get("/mcp-status")
+async def mcp_status():
+    """Diagnóstico público: confirma que el servidor MCP SSE está activo."""
+    return {
+        "mcp": "activo",
+        "version": "8.0",
+        "sse_url": "/sse",
+        "auth": "Bearer token requerido (MCP_AUTH_TOKEN env var)",
+        "herramientas": len(_mcp_tools_manifest()["tools"]),
+    }
