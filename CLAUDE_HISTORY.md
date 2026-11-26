@@ -6,8 +6,18 @@ Una entrada por sesión, la más reciente arriba. Formato:
 - Qué se hizo (2-4 líneas).
 - Qué quedó pendiente.
 
-## 2026-11-26 — Radio local de 300 km (modelo v7)
+## 2026-11-26 — Modelo v8 regionalizado y herramientas MCP
+- Modelo v8 regionalizado (`api/train_t3_regional.py` y `api/modelo_sismos_v8.joblib`): reglas diferenciadas por régimen (R1 Arcos someros, R2 Subducción fosa, R3 Losa profunda, R4 Fallas baja tasa).
+- API (`api/main.py`) actualizada para soportar v8, calculando predicciones y devolviendo régimen y explicación física.
+- Frontend (`public/index.html`) actualizado para mostrar el badge de régimen por región.
+- MCP Server (`mcp/server.py` y `.vscode/mcp.json`): añadidas herramientas de conexión y consulta para Supabase, Render y Vercel.
+- Pendiente: commit y despliegue a Render y Vercel.
+
+## 2026-11-26 — Radio local de 300 km (modelo v7) y despliegues
 - Exploración de bandas de profundidad y radios; aplicado 300 km con 5–40 km. Modelo v7 (AUC y AP mejoran con IC95 sin cero en test 2024+). Columnas `loc200_*` conservadas (miden ≤ 300 km). Ver `docs/PLAN_PRODUCCION_MODELO.md`.
+- Render desplegó el commit 8ea1bf2 sirviendo v7; `/vigilar` verificado en vivo (31 s en frío, 8 s con caché). Supabase actualizado con conteos a 300 km.
+- Frontend desplegado a producción en Vercel (`npx vercel --prod`).
+- Pendiente: prueba de alerta real de Telegram sujeta a un enjambre real o mediante modo de simulación (`CRON_SECRET`).
 
 ## 2026-11-25 — Todo M4,0 (modelo v6)
 - Decisión del usuario: sin umbral M4,5. Features, dataset, entrenamiento, `/vigilar`, web y pruebas pasan a M4,0; modelo v6; historia GK de 2 600 días con caché. Detalle en `docs/PLAN_PRODUCCION_MODELO.md`.

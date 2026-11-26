@@ -1,14 +1,17 @@
-﻿{
-    "servers":  {
-                    "riesgo-sismico":  {
-                                           "args":  [
-                                                        "C:\\UltimoModulo\\mcp\\server.py"
-                                                    ],
-                                           "env":  {
-                                                       "RENDER_API_URL":  "https://ultimo-modulo.onrender.com"
-                                                   },
-                                           "command":  "C:\\Users\\gianc\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-                                           "type":  "stdio"
-                                       }
-                }
+{
+    "servers": {
+        "riesgo-sismico": {
+            "type": "stdio",
+            "command": "C:\\Users\\gianc\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+            "args": [
+                "C:\\UltimoModulo\\mcp\\server.py"
+            ],
+            "env": {
+                "RENDER_API_URL": "https://ultimo-modulo.onrender.com",
+                "VERCEL_APP_URL": "https://ultimo-modulo.vercel.app",
+                "SUPABASE_URL": "https://mknmzuvagniweqlljund.supabase.co",
+                "SUPABASE_ANON_KEY": "sb_publishable_-O6gSSWO-IW49-KoUt6f5A_957UQy16"
+            }
+        }
+    }
 }

@@ -10,10 +10,10 @@
 - [x] Web rediseñada: mapa en vivo, top 3, tabla ordenable y paginada, lenguaje simple.
 - [x] Documentación del modelo (`docs/modelo_ml.md`).
 
-## Para que la web muestre el riesgo de hoy (en curso)
-- [ ] Ejecutar `db/zonas_riesgo_hoy.sql` en Supabase.
-- [ ] Esperar el despliegue de Render y lanzar `/vigilar` (llena multiplicador y probabilidad).
-- [ ] Desplegar la web: `npx vercel --prod`.
+## Para que la web muestre el riesgo de hoy (completado)
+- [x] Ejecutar `db/zonas_riesgo_hoy.sql` en Supabase.
+- [x] Despliegue de Render verificado y `/vigilar` ejecutado (modelo v7 activo, llena multiplicador y probabilidad a 300 km).
+- [x] Desplegar la web: `npx vercel --prod` ejecutado.
 
 ## Seguridad
 - [ ] Regenerar la clave de OpenAI (se pegó en un chat) y poner límite de gasto mensual.

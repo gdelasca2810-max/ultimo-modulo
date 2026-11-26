@@ -449,6 +449,17 @@ const esActiva = z => Number(z.loc200_n96_con || 0) > 0 || Number(z.lat_n96_prof
 const multDe = z => (z.multiplicador_riesgo == null ? null : Number(z.multiplicador_riesgo));
 const probDe = z => (z.probabilidad_m65_7d == null ? null : Number(z.probabilidad_m65_7d));
 
+function regimenZona(z) {
+  const nom = z.zona || '';
+  if (['Japon NE', 'Taiwan', 'Mexico/Centroam', 'Sandwich del Sur', 'Costa O EEUU'].includes(nom))
+    return { tag: 'Arco Somero', cls: 'badge-arco', desc: 'Sensible a enjambres someros ≤300 y ≤500 km' };
+  if (['Chile/Peru (Lima-Valpo)', 'Chile Central/Sur', 'Alaska/Aleutianas'].includes(nom))
+    return { tag: 'Fosa Trabada', cls: 'badge-fosa', desc: 'Subducción acoplada (riesgo por acumulación histórica)' };
+  if (['Tonga/Kermadec/NZ', 'Salomon/Vanuatu', 'Indonesia Sonda', 'Indonesia Banda/Timor', 'PNG/Nueva Bretana'].includes(nom))
+    return { tag: 'Losa Profunda', cls: 'badge-losa', desc: 'Sismos en losa y manto (>70 y >150 km)' };
+  return { tag: 'Falla Compleja', cls: 'badge-falla', desc: 'Baja tasa de fondo (prior histórico)' };
+}
+
 /* Traduce el multiplicador a lenguaje de todos los días */
 function nivelRiesgo(z) {
   const m = multDe(z);
@@ -629,7 +640,7 @@ function renderizarTabla() {
     const m = multDe(z), p = probDe(z);
     return `
       <tr class="row-in" style="animation-delay:${i * 60}ms" data-zona="${esc(z.zona)}">
-        <td class="zone-name" data-label="Región">${esc(z.zona)}</td>
+        <td class="zone-name" data-label="Región">${esc(z.zona)}<br><small style="font-weight: 500; font-size: 0.72rem; color: var(--accent); opacity: 0.9;" title="${esc(regimenZona(z).desc)}">${esc(regimenZona(z).tag)}</small></td>
         <td data-label="Riesgo hoy"><div><span class="pill ${n.cls}">${esc(n.etiqueta)}</span>
           <span class="sub-data">${m != null ? `<b>${fmt(m)}×</b> · ${esc(n.veces)}` : 'Se calcula en la próxima revisión'}${p != null ? `<br>${fmt(p * 100, 2)} % de un terremoto fuerte esta semana` : ''}${m != null && n.motivo ? `<br><em>${esc(n.motivo)}</em>` : ''}</span></div></td>
         <td data-label="Riesgo normal"><div><b>${fmt(tasa * 100, 2)} %</b><span class="sub-data">${anios}</span>

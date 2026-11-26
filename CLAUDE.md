@@ -6,10 +6,9 @@ Guía para Claude Code en este proyecto. Aquí solo van **reglas y hechos vigent
 - Repo: https://github.com/gdelasca2810-max/ultimo-modulo (privado, rama `main`).
 - Deploy frontend: Vercel (`vercel.json`, publica `public/`). Detalle en `docs/deploy/vercel.md`.
 - Deploy backend: Render vía Blueprint `render.yaml` (estático, `public/`, autodeploy). URL: https://ultimo-modulo.onrender.com. Detalle en `docs/deploy/render.md`.
-- Backend real: `api/main.py` (FastAPI + `modelo_sismos.joblib`), `/vigilar?key=CRON_SECRET` → Supabase + Telegram. Frontend en Vercel: https://ultimo-modulo.vercel.app.
-- Métricas en 96 h: `loc200` (≤200 km), `loc500` (≤500 km, incluye las de 200) y `prof70_150` (profundidad intermedia, dentro de 500 km). Web y Telegram comparten la misma lógica de etiquetas. Detalle en `docs/arquitectura.md`.
+- Backend real: `api/main.py` (FastAPI + `modelo_sismos_v8.joblib`, fallback v7), `/vigilar?key=CRON_SECRET` → Supabase + Telegram. Frontend en Vercel: https://ultimo-modulo.vercel.app.
+- Métricas en 96 h: `loc200` (mide ≤300 km por compatibilidad, somero 5–40 km), `loc500` (≤500 km) y `prof70_150` (70–150 km en cajas laterales). Modelo v7 multiplicativo activo.
 - No commitear `.github/workflows/vigilancia_sismica.yml` (GitHub rechaza el push).
-<!-- Rellenar: qué es el proyecto, stack, comandos esenciales. -->
 
 ## Mapa de documentos (leer bajo demanda con `@`)
 | Tema | Archivo |

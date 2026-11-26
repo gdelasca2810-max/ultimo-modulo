@@ -30,10 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# v7 = modelo multiplicativo T3 (M4,0, radio local 300 km) cuyas features calcula /vigilar con las MISMAS reglas que el entrenamiento
-# (api/features_t3.py). El artefacto v2 anterior (modelo_sismos.joblib) queda solo como histórico/rollback
-# del modelo: su media/p90 tienen fuga temporal y NO son compatibles con las features T3 en vivo.
-MODEL_PATH = Path(__file__).parent / os.getenv("MODELO_ARTEFACTO", "modelo_sismos_v7.joblib")
+# v8 = modelo regionalizado por régimen tectónico (M4,0, radio local 300 km y refuerzos)
+# Si no está disponible v8, hace fallback automático a v7.
+MODELO_NOMBRE_DEFECTO = "modelo_sismos_v8.joblib" if (Path(__file__).parent / "modelo_sismos_v8.joblib").exists() else "modelo_sismos_v7.joblib"
+MODEL_PATH = Path(__file__).parent / os.getenv("MODELO_ARTEFACTO", MODELO_NOMBRE_DEFECTO)
 artefacto = joblib.load(MODEL_PATH)
 ZONAS_T3 = cargar_zonas()
 
@@ -154,7 +154,43 @@ def calcular_prediccion(datos: ConsultaRiesgo):
             valores[feature] for feature in features
         ]], dtype=float)
 
-    if "escalones" in artefacto:
+    regimen = None
+    explicacion_regimen = None
+    if "regimenes_zonas" in artefacto:
+        # Modelo v8: global + refuerzos regionales
+        for r_nom, r_zonas in artefacto["regimenes_zonas"].items():
+            if zona_modelo in r_zonas:
+                regimen = r_nom
+                break
+        if not regimen:
+            regimen = "R4_Fallas_Baja_Tasa"
+
+        descripciones = {
+            "R1_Arcos_Someros": "Arco somero activo (sensible a enjambres someros ≤300 y ≤500 km)",
+            "R2_Subduccion_Costa": "Fosa de subducción trabada (riesgo basal por acumulación histórica)",
+            "R3_Losa_Profunda": "Subducción con sismicidad profunda en losa y manto",
+            "R4_Fallas_Baja_Tasa": "Fallas complejas de baja tasa de fondo (prior histórico)",
+        }
+        explicacion_regimen = descripciones.get(regimen, "Régimen general")
+
+        eta = math.log(tasa_base / (1.0 - tasa_base)) + float(artefacto.get("sesgo", 0.0))
+        valores_dict = {
+            "loc200_n96_con": datos.loc200_n96_con,
+            "loc200_n96_sin45": datos.loc200_n96_sin45,
+            "loc500_n96_con": datos.loc500_n96_con,
+            "lat_n96_prof70_150": datos.lat_n96_prof70_150,
+        }
+        w_idx = 0
+        for col, umbral in artefacto.get("escalones_globales", []):
+            if valores_dict.get(col, 0) >= umbral:
+                eta += float(artefacto["pesos"][w_idx])
+            w_idx += 1
+        for r_nom, col, umbral in artefacto.get("refuerzos_regionales", []):
+            if regimen == r_nom and valores_dict.get(col, 0) >= umbral:
+                eta += float(artefacto["pesos"][w_idx])
+            w_idx += 1
+        prob_7d = 1.0 / (1.0 + math.exp(-eta))
+    elif "escalones" in artefacto:
         # logit(p) = logit(tasa_zona) + sesgo + suma de pesos de los escalones activados
         valores_v5 = {
             "loc200_n96_con": datos.loc200_n96_con,
@@ -170,7 +206,7 @@ def calcular_prediccion(datos: ConsultaRiesgo):
     # «enjambre» = al menos 3 sismos M4.0+ SIN réplicas a <=300 km (la señal que el modelo premia).
     local_activo = (
         datos.loc200_n96_sin45 >= 3
-        if "escalones" in artefacto
+        if ("escalones" in artefacto or "regimenes_zonas" in artefacto)
         else datos.loc200_n96_con >= 3
     )
     es_elevado = multiplicador >= 2.0 and prob_7d >= 0.025 and local_activo
@@ -178,6 +214,8 @@ def calcular_prediccion(datos: ConsultaRiesgo):
     return {
         "zona": datos.zona,
         "version_modelo": artefacto.get("version", "v1"),
+        "regimen": regimen,
+        "explicacion_regimen": explicacion_regimen,
         "probabilidad_m65_7d": round(prob_7d, 5),
         "tasa_historica_7d": round(tasa_base, 5),
         "multiplicador_riesgo": multiplicador,
@@ -1036,3 +1074,15 @@ def telegram_webhook(update: dict, background_tasks: BackgroundTasks):
         procesar_consulta_telegram, tg_token, chat_id, texto_usuario, msg_id
     )
     return {"ok": True}
+
+
+# Montaje del servidor MCP remoto sobre SSE (protegido con Bearer Token)
+try:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mcp"))
+    from server import obtener_mcp_asgi_app
+    mcp_asgi = obtener_mcp_asgi_app()
+    app.mount("/mcp", mcp_asgi)
+    app.mount("/sse", mcp_asgi)
+except Exception as e:
+    print(f"[mcp] No se pudo montar servidor MCP remoto: {e}", flush=True)
